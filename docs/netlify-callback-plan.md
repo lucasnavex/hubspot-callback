@@ -30,6 +30,12 @@
 - Inicia automaticamente a URL de autorização da Nvoip assim que a página é carregada, sem exibir botões adicionais.
 - Serve como a “página interna” que o HubSpot renderiza dentro do iframe ao clicar no botão de URL externa, mantendo todo o fluxo dentro da tela de settings.
 
+## 5. iframe entry (`public/oauth-iframe-entry.html`)
+
+- Esta página é carregada diretamente pelo URL exposto em `hs-iframe-handler` e imediatamente redireciona para `https://api.nvoip.com.br/auth/oauth2/authorize`.
+- Ela é responsável por construir a URL de autorização usando `clientId`, `redirectUri`, `scope` e o `state` fornecido, e em seguida fazer `window.location.replace(...)`.
+- Serve para o botão “abrir URL externa em iframe” apontar direto ao `/oauth/authorize`, sem nenhuma interação adicional.
+
 ## 3. Variáveis de ambiente Netlify
 
 - `HUBSPOT_CLIENT_ID` → client_id oficial do app HubSpot.

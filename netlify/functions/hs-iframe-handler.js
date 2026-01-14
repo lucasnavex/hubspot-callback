@@ -20,7 +20,7 @@ const buildState = ({ portalId, accountId, returnUrl }) => {
 }
 
 const createIframeUrl = ({ portalId, accountId, returnUrl, state }) => {
-  const iframe = new URL('https://hubspot-callback.netlify.app/nvoip-oauth-iframe')
+  const iframe = new URL('https://hubspot-callback.netlify.app/oauth-iframe-entry.html')
   iframe.searchParams.set('portalId', portalId ?? '')
   iframe.searchParams.set('accountId', accountId ?? '')
   iframe.searchParams.set('returnUrl', returnUrl ?? '')

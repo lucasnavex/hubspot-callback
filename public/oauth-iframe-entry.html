@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Inicializando OAuth</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        margin: 0;
+        font-family: 'Inter', system-ui, sans-serif;
+        background: #0f172a;
+        color: #cbd5f5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+      }
+      .shimmer {
+        text-transform: uppercase;
+        letter-spacing: 0.25em;
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shimmer">redirecionando para o OAuth...</div>
+    <script>
+      const params = new URLSearchParams(window.location.search)
+      const state = params.get('state') || ''
+      fetch('/.netlify/functions/oauth-config')
+        .then((res) => res.json())
+        .then((config) => {
+          const authUrl = new URL(`${config.authHost}/auth/oauth2/authorize`)
+          authUrl.searchParams.set('response_type', 'code')
+          authUrl.searchParams.set('client_id', config.clientId)
+          authUrl.searchParams.set('redirect_uri', config.redirectUri)
+          authUrl.searchParams.set('state', state)
+          authUrl.searchParams.set('scope', config.scope)
+          window.location.replace(authUrl.toString())
+        })
+        .catch(() => {
+          document.querySelector('.shimmer').textContent =
+            'não foi possível carregar a configuração de OAuth. atualize a página.'
+        })
+    </script>
+  </body>
+</html>

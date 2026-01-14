@@ -11,10 +11,25 @@
 
 - Recebe o `code`, `state`, `error` e quaisquer query params enviados pela Nvoip.
 - Decodifica `state` (base64 JSON) para validar e reconstruir `returnUrl`, `accountId` e `portalId`.
-- Tenta trocar o `code` por tokens chamando `https://api.nvoip.com.br/auth/oauth2/token` usando `HUBSPOT_CLIENT_ID`/`HUBSPOT_CLIENT_SECRET`; o resultado fica exposto nos logs da função.
+- Tenta trocar o `code` por tokens chamando `https://api.nvoip.com.br/auth/oauth2/token` usando `HUBSPOT_CLIENT_ID`/`HUBSPOT_CLIENT_SECRET`; o resultado (access/refresh) fica visível nos logs e pode ser guardado conforme necessário.
 - Reconstrói a URL de destino (priorizando o `returnUrl` contido no state) e anexa `nvoip_code`, `nvoip_state`, `error`, `portalId` e `accountId`.
 - Retorna um 302 para o HubSpot com cabeçalhos CORS (`Access-Control-Allow-Origin`, `Access-Control-Allow-Headers`, `Access-Control-Allow-Methods`).
 - Responde `OPTIONS` com 204 para permitir preflight.
+
+## 3. Handler iframe (`netlify/functions/hs-iframe-handler.js`)
+
+- Recebe `portalId`, `accountId`, `returnUrl`/`actionUrl` e outros dados enviados pelo HubSpot ao abrir o botão externo no card de settings (GET ou POST).
+- Gera o `state` com o mesmo padrão usado em `buildState()` (returnUrl → `https://app.hubspot.com/.../general-settings?accountId=…`) e loga os valores para ajudar na validação dos parâmetros dinâmicos.
+- Retorna `{ response: { iframeUrl: "https://hubspot-callback.netlify.app/nvoip-oauth-iframe?..."} }` para que o HubSpot abra um iframe mostrando o botão de autenticação, o `state` e campos de token.
+- As URLs dinâmicas (`portalId`, `accountId`, `returnUrl`) seguem a mesma fórmula usada no state e garantem que o callback final volte ao mesmo local.
+
+## 4. iframe público (`public/nvoip-oauth-iframe.html`)
+
+- Carrega o `portalId`, `accountId`, `state` e `returnUrl` passados pelo handler.
+- Busca a configuração de OAuth via `/ .netlify/functions/oauth-config` (clientId, redirectUri, scope, authHost).
+- Exibe o state decodificado e um botão “Autenticar com a Nvoip” que abre a URL de autorização da Nvoip com o state embutido.
+- Oferece um campo de tokens editável para quem quiser colar rapidamente o `access_token`/`refresh_token` recebido nos logs.
+- É a “página interna” que o HubSpot renderiza dentro do iframe ao clicar no botão de URL externa (mantém todo o fluxo dentro da tela de settings).
 
 ## 3. Variáveis de ambiente Netlify
 

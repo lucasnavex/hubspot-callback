@@ -20,7 +20,12 @@ Esta aplicação serve como contrato entre o app HubSpot e a Nvoip: a página p�
    - Responde `OPTIONS` com 204 e adiciona cabeçalhos CORS ao redirect.
    - O resultado da troca de token é incluído no corpo JSON para facilitar logs.
 
-3. **Configurações e variáveis**
+3. **Handler iframe e páginas auxiliares**
+  - `netlify/functions/hs-iframe-handler.js` recebe a chamada do HubSpot para o botão “abrir URL externa em iframe”, loga `portalId`, `accountId`, `returnUrl` e gera o `state` com o mesmo formato usado no callback.
+  - O endpoint responde `{ response: { iframeUrl: "https://hubspot-callback.netlify.app/nvoip-oauth-iframe?..."} }`, entregando a URL com os parâmetros dinâmicos.
+  - A página `public/nvoip-oauth-iframe.html` mostra o state, botões de autenticação e um campo de tokens enquanto aguarda o callback, sem sair da tela de settings.
+  - `netlify/functions/oauth-config.js` expõe as credenciais e `scope` usados pela página, mantendo o frontend desacoplado das env vars.
+4. **Configurações e variáveis**
    - `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `HUBSPOT_TOKEN_URL`, `HUBSPOT_REDIRECT_URI` definem credenciais e rota no Netlify.
    - `VITE_HUBSPOT_CLIENT_ID` e `VITE_HUBSPOT_CLIENT_SECRET` propagam esses valores para o front-end React.
 

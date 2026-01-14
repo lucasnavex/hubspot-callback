@@ -1,0 +1,17 @@
+{
+  "auth": {
+    "redirectUris": [
+      "https://hubspot-callback.netlify.app/nvoip-oauth-callback"
+    ],
+    "fallbackRedirect": "https://hubspot-callback.netlify.app/nvoip-oauth-callback"
+  },
+  "permittedUrls": {
+    "fetch": [
+      "https://hubspot-callback.netlify.app"
+    ],
+    "iframe": [
+      "https://hubspot-callback.netlify.app"
+    ]
+  },
+  "notes": "Atualize os valores acima com o client_id/secret corretos no painel HubSpot."
+}

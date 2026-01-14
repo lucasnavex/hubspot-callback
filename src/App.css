@@ -1,0 +1,81 @@
+:root {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #070c16;
+  color: #e2e8f0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 3rem 1.5rem 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.hero {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  padding: 2rem;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.15), rgba(15, 23, 42, 0.95));
+}
+
+.hero h1 {
+  margin: 0.5rem 0;
+  font-size: clamp(2rem, 3vw, 2.5rem);
+}
+
+.hero p {
+  margin: 0;
+  max-width: 640px;
+  color: #cbd5f5;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  font-size: 0.75rem;
+  color: #a5b4fc;
+}
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+}
+
+.panel-grid article {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 14px;
+  padding: 1.25rem;
+  min-height: 160px;
+}
+
+.panel-grid h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.panel-grid ul {
+  padding-left: 1rem;
+  margin: 0;
+  list-style: none;
+}
+
+.panel-grid li {
+  margin-bottom: 0.35rem;
+}
+
+code {
+  background: rgba(148, 163, 184, 0.2);
+  padding: 0.15rem 0.4rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}

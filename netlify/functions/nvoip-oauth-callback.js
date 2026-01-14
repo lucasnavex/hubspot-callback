@@ -102,11 +102,13 @@ exports.handler = async (event) => {
     process.env.HUBSPOT_REDIRECT_URI ?? 'https://hubspot-callback.netlify.app/nvoip-oauth-callback',
   )
 
+  const redirectUri = process.env.HUBSPOT_REDIRECT_URI ?? 'https://hubspot-callback.netlify.app/nvoip-oauth-callback'
+  
   let tokenResult = null
   let tokenError = null
   if (queryParams.code) {
     try {
-      tokenResult = await exchangeToken(queryParams.code, destination.toString())
+      tokenResult = await exchangeToken(queryParams.code, redirectUri)
     } catch (error) {
       tokenError = error?.message ?? 'Erro ao trocar token'
     }
@@ -116,37 +118,24 @@ exports.handler = async (event) => {
   if (decodedState?.portalId) destination.searchParams.set('portalId', decodedState.portalId)
   if (decodedState?.accountId) destination.searchParams.set('accountId', decodedState.accountId)
 
-  const payload = {
-    message: 'Redirecting to HubSpot with the decoded state',
-    destination: destination.toString(),
-    parsedState: decodedState,
-    tokenResult,
-    tokenError,
+  // Log do resultado da troca de token para facilitar debug
+  if (tokenResult) {
+    console.log('Token exchange successful:', {
+      access_token: tokenResult.access_token ? '***' : null,
+      refresh_token: tokenResult.refresh_token ? '***' : null,
+      expires_in: tokenResult.expires_in,
+    })
+  }
+  if (tokenError) {
+    console.error('Token exchange error:', tokenError)
   }
 
-  const htmlResponse = `
-    <!doctype html>
-    <html lang="pt-BR">
-      <head>
-        <meta charset="utf-8"/>
-        <title>Finalizando OAuth</title>
-      </head>
-      <body>
-        <script>
-          const data = ${JSON.stringify(payload)}
-          window.parent.postMessage({ action: 'DONE', tokens: data.tokenResult, error: data.tokenError }, '*')
-          window.location.replace(data.destination)
-        </script>
-      </body>
-    </html>
-  `
-
   return {
-    statusCode: 200,
+    statusCode: 302,
     headers: {
       ...corsHeaders,
-      'Content-Type': 'text/html; charset=utf-8',
+      Location: destination.toString(),
     },
-    body: htmlResponse,
+    body: '',
   }
 }

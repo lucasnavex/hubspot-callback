@@ -102,13 +102,11 @@ exports.handler = async (event) => {
     process.env.HUBSPOT_REDIRECT_URI ?? 'https://hubspot-callback.netlify.app/nvoip-oauth-callback',
   )
 
-  const redirectUri = process.env.HUBSPOT_REDIRECT_URI ?? 'https://hubspot-callback.netlify.app/nvoip-oauth-callback'
-  
   let tokenResult = null
   let tokenError = null
   if (queryParams.code) {
     try {
-      tokenResult = await exchangeToken(queryParams.code, redirectUri)
+      tokenResult = await exchangeToken(queryParams.code, destination.toString())
     } catch (error) {
       tokenError = error?.message ?? 'Erro ao trocar token'
     }
@@ -118,17 +116,13 @@ exports.handler = async (event) => {
   if (decodedState?.portalId) destination.searchParams.set('portalId', decodedState.portalId)
   if (decodedState?.accountId) destination.searchParams.set('accountId', decodedState.accountId)
 
-  // Log do resultado da troca de token para facilitar debug
-  if (tokenResult) {
-    console.log('Token exchange successful:', {
-      access_token: tokenResult.access_token ? '***' : null,
-      refresh_token: tokenResult.refresh_token ? '***' : null,
-      expires_in: tokenResult.expires_in,
-    })
-  }
-  if (tokenError) {
-    console.error('Token exchange error:', tokenError)
-  }
+  const body = JSON.stringify({
+    message: 'Redirecting to HubSpot with the decoded state',
+    destination: destination.toString(),
+    parsedState: decodedState,
+    tokenResult,
+    tokenError,
+  })
 
   return {
     statusCode: 302,
@@ -136,6 +130,6 @@ exports.handler = async (event) => {
       ...corsHeaders,
       Location: destination.toString(),
     },
-    body: '',
+    body,
   }
 }

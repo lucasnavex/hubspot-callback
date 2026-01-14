@@ -30,9 +30,9 @@ Esta aplicação serve como contrato entre o app HubSpot e a Nvoip: a página p�
 
 ## Fluxo resumo
 
-1. HubSpot inicia OAuth direcionando o usuário à Nvoip com `client_id` registrado.
+1. HubSpot inicia OAuth direcionando o usuário à Nvoip com `client_id` registrado dentro do iframe entry.
 2. Nvoip redireciona ao handler Netlify (`/nvoip-oauth-callback`) com `code`, `state`, `error`.
-3. O handler decodifica o `state`, troca o `code` por tokens, insere `portalId`/`accountId` e monta o redirect final.
+3. O handler decodifica o `state`, troca o `code` por tokens, insere `portalId`/`accountId`, envia `postMessage` com os tokens e depois monta o redirect final.
 4. O usuário retorna ao HubSpot com `nvoip_code`, `nvoip_state` e demais dados em query string; o `access_token` pode ser logado ou persistido conforme necessidade.
 
 ## Deploy e testes

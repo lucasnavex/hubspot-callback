@@ -13,7 +13,7 @@
 - Decodifica `state` (base64 JSON) para validar e reconstruir `returnUrl`, `accountId` e `portalId`.
 - Tenta trocar o `code` por tokens chamando `https://api.nvoip.com.br/auth/oauth2/token` usando `HUBSPOT_CLIENT_ID`/`HUBSPOT_CLIENT_SECRET`; o resultado fica exposto nos logs da função.
 - Reconstrói a URL de destino (priorizando o `returnUrl` contido no state) e anexa `nvoip_code`, `nvoip_state`, `error`, `portalId` e `accountId`.
-- Retorna um 302 para o HubSpot com cabeçalhos CORS (`Access-Control-Allow-Origin`, `Access-Control-Allow-Headers`, `Access-Control-Allow-Methods`).
+- Em vez de devolver um 302 puro, responde com um HTML que envia `window.parent.postMessage({ action: 'DONE', tokens })` e logo em seguida faz `window.location.replace(...)`, garantindo que o iframe receba o evento antes de vestir para o HubSpot.
 - Responde `OPTIONS` com 204 para permitir preflight.
 
 ## 3. Variáveis de ambiente Netlify

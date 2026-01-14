@@ -116,20 +116,37 @@ exports.handler = async (event) => {
   if (decodedState?.portalId) destination.searchParams.set('portalId', decodedState.portalId)
   if (decodedState?.accountId) destination.searchParams.set('accountId', decodedState.accountId)
 
-  const body = JSON.stringify({
+  const payload = {
     message: 'Redirecting to HubSpot with the decoded state',
     destination: destination.toString(),
     parsedState: decodedState,
     tokenResult,
     tokenError,
-  })
+  }
+
+  const htmlResponse = `
+    <!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8"/>
+        <title>Finalizando OAuth</title>
+      </head>
+      <body>
+        <script>
+          const data = ${JSON.stringify(payload)}
+          window.parent.postMessage({ action: 'DONE', tokens: data.tokenResult, error: data.tokenError }, '*')
+          window.location.replace(data.destination)
+        </script>
+      </body>
+    </html>
+  `
 
   return {
-    statusCode: 302,
+    statusCode: 200,
     headers: {
       ...corsHeaders,
-      Location: destination.toString(),
+      'Content-Type': 'text/html; charset=utf-8',
     },
-    body,
+    body: htmlResponse,
   }
 }

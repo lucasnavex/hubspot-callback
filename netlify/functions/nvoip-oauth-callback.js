@@ -55,6 +55,36 @@ const normalizeQuery = (event) => {
   return event.queryStringParameters ?? {}
 }
 
+const exchangeToken = async (code, redirectUri) => {
+  const clientId = process.env.HUBSPOT_CLIENT_ID
+  const clientSecret = process.env.HUBSPOT_CLIENT_SECRET
+  const tokenUrl = process.env.HUBSPOT_TOKEN_URL ?? 'https://api.nvoip.com.br/auth/oauth2/token'
+
+  if (!code || !clientId || !clientSecret) return null
+
+  const body = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+  })
+
+  const response = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Token exchange falhou (${response.status}): ${error}`)
+  }
+
+  return response.json()
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -72,6 +102,16 @@ exports.handler = async (event) => {
     process.env.HUBSPOT_REDIRECT_URI ?? 'https://hubspot-callback.netlify.app/nvoip-oauth-callback',
   )
 
+  let tokenResult = null
+  let tokenError = null
+  if (queryParams.code) {
+    try {
+      tokenResult = await exchangeToken(queryParams.code, destination.toString())
+    } catch (error) {
+      tokenError = error?.message ?? 'Erro ao trocar token'
+    }
+  }
+
   buildQuery(destination, queryParams)
   if (decodedState?.portalId) destination.searchParams.set('portalId', decodedState.portalId)
   if (decodedState?.accountId) destination.searchParams.set('accountId', decodedState.accountId)
@@ -80,6 +120,8 @@ exports.handler = async (event) => {
     message: 'Redirecting to HubSpot with the decoded state',
     destination: destination.toString(),
     parsedState: decodedState,
+    tokenResult,
+    tokenError,
   })
 
   return {

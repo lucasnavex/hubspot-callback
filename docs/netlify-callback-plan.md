@@ -11,6 +11,7 @@
 
 - Recebe o `code`, `state`, `error` e quaisquer query params enviados pela Nvoip.
 - Decodifica `state` (base64 JSON) para validar e reconstruir `returnUrl`, `accountId` e `portalId`.
+- Tenta trocar o `code` por tokens chamando `https://api.nvoip.com.br/auth/oauth2/token` usando `HUBSPOT_CLIENT_ID`/`HUBSPOT_CLIENT_SECRET`; o resultado fica exposto nos logs da função.
 - Reconstrói a URL de destino (priorizando o `returnUrl` contido no state) e anexa `nvoip_code`, `nvoip_state`, `error`, `portalId` e `accountId`.
 - Retorna um 302 para o HubSpot com cabeçalhos CORS (`Access-Control-Allow-Origin`, `Access-Control-Allow-Headers`, `Access-Control-Allow-Methods`).
 - Responde `OPTIONS` com 204 para permitir preflight.
@@ -19,9 +20,10 @@
 
 - `HUBSPOT_CLIENT_ID` → client_id oficial do app HubSpot.
 - `HUBSPOT_CLIENT_SECRET` → `c4d7a76a-4239-4dd9-ac1d-530a0e4098e2` (pode ser redefinido no painel).
+- `HUBSPOT_TOKEN_URL` → (opcional) endpoint de token; padrão `https://api.nvoip.com.br/auth/oauth2/token`.
 - `HUBSPOT_REDIRECT_URI` → `https://hubspot-callback.netlify.app/nvoip-oauth-callback`.
 - `VITE_HUBSPOT_CLIENT_ID`/`VITE_HUBSPOT_CLIENT_SECRET` → expõe as credenciais para o frontend, evitando hardcode.
-- O handler usa `HUBSPOT_REDIRECT_URI` para reforçar o destino e as credenciais para troca de tokens, caso necessário no futuro.
+- O handler usa `HUBSPOT_REDIRECT_URI` para reforçar o destino e as credenciais para trocar o `code` por token em `/auth/oauth2/token` antes de gerar o redirect.
 
 ## 4. Fluxo OAuth (Authorization Code)
 

@@ -65,24 +65,12 @@
       </p>
       <h1>Autenticar com a Nvoip</h1>
       <p>
-        Este iframe serve como gatilho de OAuth para permitir que o HubSpot abra a tela
-        diretamente nas configurações. Clique no botão abaixo para iniciar o fluxo.
+        Este iframe inicia automaticamente o fluxo OAuth assim que é carregado, abrindo
+        a tela de autorização da Nvoip dentro do próprio iframe.
       </p>
-      <button id="auth-button">Autenticar com a Nvoip</button>
       <section style="margin-top: 1.25rem;">
         <h2>State enviado</h2>
         <pre id="state-value">carregando…</pre>
-      </section>
-      <section style="margin-top: 1.25rem;">
-        <h2>Tokens</h2>
-        <p>
-          O handler Netlify (`/nvoip-oauth-callback`) troca o código por tokens e você consegue
-          conferir o resultado nos logs (e eventualmente adicionar persistência). Cole o token
-          abaixo se quiser inspecionar rapidamente.
-        </p>
-        <div id="token-area" class="token-field" contenteditable="true" spellcheck="false">
-          cole o token aqui após receber pelos logs
-        </div>
       </section>
     </div>
     <script>
@@ -94,26 +82,27 @@
       document.getElementById('account-tag').textContent = `Account: ${accountId}`
       document.getElementById('state-value').textContent = params.get('state') || 'sem-state'
 
-      let config = null
+      const stamping = document.createElement('p')
+      stamping.textContent = 'Autenticando com a Nvoip…'
+      document.querySelector('.page').appendChild(stamping)
+
       fetch('/.netlify/functions/oauth-config')
         .then((res) => res.json())
-        .then((data) => {
-          config = data
+        .then((config) => {
+          const returnUrl = params.get('returnUrl') || config.redirectUri
+          const state = params.get('state') || ''
+          const url = new URL(`${config.authHost}/auth/oauth2/authorize`)
+          url.searchParams.set('response_type', 'code')
+          url.searchParams.set('client_id', config.clientId)
+          url.searchParams.set('redirect_uri', config.redirectUri)
+          url.searchParams.set('state', state)
+          url.searchParams.set('scope', config.scope)
+          window.location.replace(url.toString())
         })
-
-      const authButton = document.getElementById('auth-button')
-      authButton.addEventListener('click', () => {
-        if (!config) return
-        const returnUrl = params.get('returnUrl') || config.redirectUri
-        const state = params.get('state') || ''
-        const url = new URL(`${config.authHost}/auth/oauth2/authorize`)
-        url.searchParams.set('response_type', 'code')
-        url.searchParams.set('client_id', config.clientId)
-        url.searchParams.set('redirect_uri', config.redirectUri)
-        url.searchParams.set('state', state)
-        url.searchParams.set('scope', config.scope)
-        window.open(url.toString(), 'nvoipAuth', 'width=600,height=700')
-      })
+        .catch(() => {
+          stamping.textContent =
+            'Não foi possível carregar a configuração de OAuth. Recarregue a página em seguida.'
+        })
     </script>
   </body>
 </html>

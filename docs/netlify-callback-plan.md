@@ -26,10 +26,9 @@
 ## 4. iframe público (`public/nvoip-oauth-iframe.html`)
 
 - Carrega o `portalId`, `accountId`, `state` e `returnUrl` passados pelo handler.
-- Busca a configuração de OAuth via `/ .netlify/functions/oauth-config` (clientId, redirectUri, scope, authHost).
-- Exibe o state decodificado e um botão “Autenticar com a Nvoip” que abre a URL de autorização da Nvoip com o state embutido.
-- Oferece um campo de tokens editável para quem quiser colar rapidamente o `access_token`/`refresh_token` recebido nos logs.
-- É a “página interna” que o HubSpot renderiza dentro do iframe ao clicar no botão de URL externa (mantém todo o fluxo dentro da tela de settings).
+- Busca a configuração de OAuth via `/.netlify/functions/oauth-config` (clientId, redirectUri, scope, authHost).
+- Inicia automaticamente a URL de autorização da Nvoip assim que a página é carregada, sem exibir botões adicionais.
+- Serve como a “página interna” que o HubSpot renderiza dentro do iframe ao clicar no botão de URL externa, mantendo todo o fluxo dentro da tela de settings.
 
 ## 3. Variáveis de ambiente Netlify
 

@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+  functions = "netlify/functions"
+  publish = "dist"
+
+[[redirects]]
+  from = "/nvoip-oauth-callback"
+  to = "/.netlify/functions/nvoip-oauth-callback"
+  status = 200
+  force = true

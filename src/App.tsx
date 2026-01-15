@@ -100,12 +100,13 @@ function App() {
   }, [buildAuthorizationUrl])
 
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
+  const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return
       const payload = event.data
       if (!payload || typeof payload !== 'object') return
 
       if (payload.type === 'nvoip-oauth-success') {
+      console.log('[OAuth popup] sucesso recebido')
         setStatus('Token salvo no localStorage.')
         setError(null)
         const saved = localStorage.getItem(tokenStorageKey)
@@ -119,6 +120,7 @@ function App() {
       }
 
       if (payload.type === 'nvoip-oauth-error') {
+      console.log('[OAuth popup] erro recebido', payload.message)
         setStatus('OAuth retornou erro.')
         setError(payload.message ?? 'Erro desconhecido.')
       }
@@ -134,11 +136,13 @@ function App() {
     const returnedState = params.get('state')
     const oauthError = params.get('error')
     if (!code && !oauthError) return
+    console.log('[OAuth callback] params', { code, state: returnedState, oauthError })
 
     const isPopup = Boolean(window.opener)
     const finishWithError = (message: string) => {
       setStatus('OAuth retornou erro.')
       setError(message)
+      console.log('[OAuth callback] error', message)
       if (isPopup) {
         window.opener?.postMessage({ type: 'nvoip-oauth-error', message }, window.location.origin)
         window.close()
@@ -148,6 +152,7 @@ function App() {
     const expectedState = sessionStorage.getItem(stateStorageKey)
     sessionStorage.removeItem(stateStorageKey)
     if (expectedState && returnedState !== expectedState) {
+      console.log('[OAuth callback] state mismatch', { expectedState, returnedState })
       finishWithError('Não foi possível validar o state.')
       return
     }
@@ -158,13 +163,16 @@ function App() {
     }
 
     if (!code) {
+      console.log('[OAuth callback] code ausente')
       finishWithError('OAuth finalizado sem code.')
       return
     }
 
     setStatus('Trocando o code por token...')
+    console.log('[OAuth callback] iniciando troca de token')
     exchangeToken(code)
       .then(() => {
+        console.log('[OAuth callback] troca concluída')
         setStatus('Token salvo no localStorage.')
         setError(null)
         if (isPopup) {

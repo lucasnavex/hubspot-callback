@@ -133,19 +133,21 @@ function App() {
     const code = params.get('code')
     const returnedState = params.get('state')
     const oauthError = params.get('error')
+    if (!code && !oauthError) return
 
-    if (!window.opener || (!code && !oauthError)) return
-
+    const isPopup = Boolean(window.opener)
     const finishWithError = (message: string) => {
       setStatus('OAuth retornou erro.')
       setError(message)
-      window.opener?.postMessage({ type: 'nvoip-oauth-error', message }, window.location.origin)
-      window.close()
+      if (isPopup) {
+        window.opener?.postMessage({ type: 'nvoip-oauth-error', message }, window.location.origin)
+        window.close()
+      }
     }
 
     const expectedState = sessionStorage.getItem(stateStorageKey)
     sessionStorage.removeItem(stateStorageKey)
-    if (!expectedState || returnedState !== expectedState) {
+    if (expectedState && returnedState !== expectedState) {
       finishWithError('Não foi possível validar o state.')
       return
     }
@@ -163,8 +165,13 @@ function App() {
     setStatus('Trocando o code por token...')
     exchangeToken(code)
       .then(() => {
-        window.opener?.postMessage({ type: 'nvoip-oauth-success' }, window.location.origin)
-        window.close()
+        setStatus('Token salvo no localStorage.')
+        setError(null)
+        if (isPopup) {
+          window.opener?.postMessage({ type: 'nvoip-oauth-success' }, window.location.origin)
+          window.close()
+        }
+        window.history.replaceState({}, document.title, window.location.pathname)
       })
       .catch((exchangeError) => {
         finishWithError(

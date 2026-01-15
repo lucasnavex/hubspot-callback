@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { nvoipAuthConfig } from './app/settings/nvoipAuth'
+import hubspotLogo from './assets/hubspot.svg'
+import nvoipLogo from './assets/nvoiplogo.png'
 
 type TokenResponse = {
   access_token: string
@@ -15,20 +17,8 @@ const tokenStorageKey = 'nvoip.oauth.token'
 const stateStorageKey = 'nvoip.oauth.state'
 
 function App() {
-  const { redirectUri, fallbackRedirect, permittedUrls, clientId, authUrl, tokenExchangeUrl, appRedirectPath, scopes } =
-    nvoipAuthConfig
-  const [status, setStatus] = useState('Pronto para iniciar o OAuth.')
-  const [error, setError] = useState<string | null>(null)
-  const [infoMessage, setInfoMessage] = useState<string | null>(null)
-  const [token, setToken] = useState<TokenResponse | null>(() => {
-    const saved = localStorage.getItem(tokenStorageKey)
-    if (!saved) return null
-    try {
-      return JSON.parse(saved) as TokenResponse
-    } catch {
-      return null
-    }
-  })
+  const { clientId, authUrl, tokenExchangeUrl, appRedirectPath, scopes } = nvoipAuthConfig
+  const [showCard, setShowCard] = useState(true)
 
   const redirectUriForAuth = useMemo(() => {
     return new URL(appRedirectPath, window.location.origin).toString()
@@ -36,21 +26,11 @@ function App() {
 
   const storeToken = useCallback((tokenResponse: TokenResponse) => {
     localStorage.setItem(tokenStorageKey, JSON.stringify(tokenResponse))
-    setToken(tokenResponse)
-    setInfoMessage(`Token salvo: ${tokenResponse.access_token}`)
-  }, [])
-
-  const clearToken = useCallback(() => {
-    localStorage.removeItem(tokenStorageKey)
-    setToken(null)
-    setStatus('Token removido do localStorage.')
-    setInfoMessage(null)
+    setShowCard(false)
   }, [])
 
   const exchangeToken = useCallback(
     async (code: string): Promise<TokenResponse> => {
-      setStatus('Trocando o code por token...')
-      setError(null)
       const url = new URL(tokenExchangeUrl, window.location.origin)
       url.searchParams.set('code', code)
       url.searchParams.set('redirect_uri', redirectUriForAuth)
@@ -82,8 +62,7 @@ function App() {
   )
 
   const startOAuth = useCallback(() => {
-    setError(null)
-    setInfoMessage(null)
+    setShowCard(true)
     const state = crypto.randomUUID()
     sessionStorage.setItem(stateStorageKey, state)
     const popup = window.open(
@@ -93,12 +72,8 @@ function App() {
     )
 
     if (!popup) {
-      setStatus('Não foi possível abrir a janela de login.')
-      setError('Verifique se o navegador bloqueou popups.')
       return
     }
-
-    setStatus('Fluxo OAuth em andamento na nova aba.')
   }, [buildAuthorizationUrl])
 
   useEffect(() => {
@@ -108,31 +83,16 @@ function App() {
       if (!payload || typeof payload !== 'object') return
 
       if (payload.type === 'nvoip-oauth-success') {
-      console.log('[OAuth popup] sucesso recebido')
         if (payload.token) {
           storeToken(payload.token as TokenResponse)
-        } else {
-          const saved = localStorage.getItem(tokenStorageKey)
-          if (saved) {
-            try {
-              setToken(JSON.parse(saved) as TokenResponse)
-            } catch {
-              setToken(null)
-            }
-          }
         }
       }
 
-      if (payload.type === 'nvoip-oauth-error') {
-      console.log('[OAuth popup] erro recebido', payload.message)
-        setStatus('OAuth retornou erro.')
-        setError(payload.message ?? 'Erro desconhecido.')
-      }
     }
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [])
+  }, [storeToken])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -140,13 +100,9 @@ function App() {
     const returnedState = params.get('state')
     const oauthError = params.get('error')
     if (!code && !oauthError) return
-    console.log('[OAuth callback] params', { code, state: returnedState, oauthError })
 
     const isPopup = Boolean(window.opener)
     const finishWithError = (message: string) => {
-      setStatus('OAuth retornou erro.')
-      setError(message)
-      console.log('[OAuth callback] error', message)
       if (isPopup) {
         window.opener?.postMessage({ type: 'nvoip-oauth-error', message }, window.location.origin)
         window.close()
@@ -156,7 +112,6 @@ function App() {
     const expectedState = sessionStorage.getItem(stateStorageKey)
     sessionStorage.removeItem(stateStorageKey)
     if (expectedState && returnedState !== expectedState) {
-      console.log('[OAuth callback] state mismatch', { expectedState, returnedState })
       finishWithError('Não foi possível validar o state.')
       return
     }
@@ -167,19 +122,13 @@ function App() {
     }
 
     if (!code) {
-      console.log('[OAuth callback] code ausente')
       finishWithError('OAuth finalizado sem code.')
       return
     }
 
-    const handleCode = async () => {
-      setStatus('Trocando o code por token...')
-      console.log('[OAuth callback] iniciando troca de token')
+      const handleCode = async () => {
       try {
         const tokenResponse = await exchangeToken(code)
-        console.log('[OAuth callback] troca concluída')
-        setStatus('Token salvo no localStorage.')
-        setError(null)
         storeToken(tokenResponse)
         if (isPopup) {
           window.opener?.postMessage(
@@ -197,119 +146,37 @@ function App() {
     }
 
     handleCode()
-  }, [exchangeToken])
+  }, [exchangeToken, storeToken])
 
   return (
-    <main className="app-shell">
-      <section className="hero">
-        <div className="oauth-card">
+    <main className={`app-shell ${showCard ? '' : 'blank'}`}>
+      {showCard ? (
+        <section className="hero">
+          <div className="oauth-card">
           <div className="logo-row">
-            <span className="logo-placeholder primary-logo">HS</span>
-            <span className="logo-placeholder secondary-logo">Nvoip</span>
+          <img src={hubspotLogo} alt="HubSpot" className="logo-image" />
+          <div className="logo-dots">
+            <span />
+            <span />
+            <span />
           </div>
-          <p className="card-subtitle">Login to continue</p>
-          <button className="oauth-card-button" type="button" onClick={startOAuth}>
-            Login with Nvoip
-          </button>
-          <p className="terms-text">
-            By logging in, you agree to our <span>Terms of Service</span>
-          </p>
+          <img src={nvoipLogo} alt="Nvoip" className="logo-image"  />
         </div>
-        <div className="hero-messaging">
-          <p className="eyebrow">Callback HubSpot · Netlify</p>
-          <h1>Login OAuth Nvoip</h1>
-          <p>
-            A tela acima simula um card pequeno como o do app HubSpot. Após o OAuth, trocamos o code
-            por token, gravamos no localStorage e exibimos o resultado.
-          </p>
-          <div className="hero-actions">
-            <button className="primary-button" type="button" onClick={startOAuth}>
-              Conectar com Nvoip
+            <p className="card-subtitle">Faça login para continuar</p>
+            <button className="oauth-card-button" type="button" onClick={startOAuth}>
+              Entrar com a Nvoip
             </button>
-            {token ? (
-              <button className="ghost-button" type="button" onClick={clearToken}>
-                Limpar token
-              </button>
-            ) : null}
-          </div>
-          <div className="status-card" aria-live="polite">
-            <span>{status}</span>
-            {error ? <span className="status-error">{error}</span> : null}
-          </div>
-          {infoMessage ? <div className="info-box">{infoMessage}</div> : null}
-          {token ? (
-            <pre className="token-preview">{JSON.stringify(token, null, 2)}</pre>
-          ) : (
-            <p className="token-placeholder">Nenhum token salvo ainda.</p>
-          )}
-        </div>
-      </section>
-
-      <section className="panel-grid">
-        <article>
-          <h2>Rotas</h2>
-          <ul>
-            <li>
-              <strong>Redirect</strong>: <code>{redirectUri}</code>
-            </li>
-            <li>
-              <strong>Fallback</strong>: <code>{fallbackRedirect}</code>
-            </li>
-            <li>
-              <strong>Redirect App</strong>: <code>{redirectUriForAuth}</code>
-            </li>
-          </ul>
-        </article>
-
-        <article>
-          <h2>Permissões</h2>
-          <p>Domínios liberados nas chamadas HubSpot:</p>
-          <ul>
-            {permittedUrls.fetch.map((url) => (
-              <li key={`fetch-${url}`}>
-                FETCH · <code>{url}</code>
-              </li>
-            ))}
-            {permittedUrls.iframe.map((url) => (
-              <li key={`iframe-${url}`}>
-                IFRAME · <code>{url}</code>
-              </li>
-            ))}
-          </ul>
-        </article>
-
-        <article>
-          <h2>Credenciais</h2>
-          <p>
-            Encontre os valores atuais no painel HubSpot ou via variáveis de ambiente Netlify:
+          <p className="terms-text">
+            Ao efetuar o login, você concorda com nossos{' '}
+            <a href="https://www.nvoip.com.br/documentos/termo-de-uso.pdf?swcfpc=1" target="_blank" rel="noreferrer">
+              Termos de Serviço
+            </a>
           </p>
-          <ul>
-            <li>
-              <code>VITE_HUBSPOT_CLIENT_ID</code>
-            </li>
-            <li>
-              <code>VITE_HUBSPOT_CLIENT_SECRET</code> (mesmo valor usado no handler Netlify)
-            </li>
-            <li>
-              <code>VITE_NVOIP_AUTH_URL</code>
-            </li>
-            <li>
-              <code>VITE_APP_REDIRECT_PATH</code>
-            </li>
-            <li>
-              <code>VITE_NVOIP_SCOPES</code>
-            </li>
-          </ul>
-        </article>
-
-        <article>
-          <h2>Documentação</h2>
-          <p>
-            Confira o plano detalhado em <code>docs/netlify-callback-plan.md</code> e valide com{' '}
-            <code>netlify dev</code> + <code>hs project upload</code>.
-          </p>
-        </article>
-      </section>
+          </div>
+        </section>
+      ) : (
+        <div className="blank-screen" />
+      )}
     </main>
   )
 }

@@ -19,6 +19,7 @@ function App() {
     nvoipAuthConfig
   const [status, setStatus] = useState('Pronto para iniciar o OAuth.')
   const [error, setError] = useState<string | null>(null)
+  const [infoMessage, setInfoMessage] = useState<string | null>(null)
   const [token, setToken] = useState<TokenResponse | null>(() => {
     const saved = localStorage.getItem(tokenStorageKey)
     if (!saved) return null
@@ -36,12 +37,14 @@ function App() {
   const storeToken = useCallback((tokenResponse: TokenResponse) => {
     localStorage.setItem(tokenStorageKey, JSON.stringify(tokenResponse))
     setToken(tokenResponse)
+    setInfoMessage(`Token salvo: ${tokenResponse.access_token}`)
   }, [])
 
   const clearToken = useCallback(() => {
     localStorage.removeItem(tokenStorageKey)
     setToken(null)
     setStatus('Token removido do localStorage.')
+    setInfoMessage(null)
   }, [])
 
   const exchangeToken = useCallback(
@@ -82,6 +85,7 @@ function App() {
 
   const startOAuth = useCallback(() => {
     setError(null)
+    setInfoMessage(null)
     const state = crypto.randomUUID()
     sessionStorage.setItem(stateStorageKey, state)
     const popup = window.open(
@@ -168,10 +172,11 @@ function App() {
       return
     }
 
-    setStatus('Trocando o code por token...')
-    console.log('[OAuth callback] iniciando troca de token')
-    exchangeToken(code)
-      .then(() => {
+    const handleCode = async () => {
+      setStatus('Trocando o code por token...')
+      console.log('[OAuth callback] iniciando troca de token')
+      try {
+        await exchangeToken(code)
         console.log('[OAuth callback] troca concluída')
         setStatus('Token salvo no localStorage.')
         setError(null)
@@ -180,42 +185,60 @@ function App() {
           window.close()
         }
         window.history.replaceState({}, document.title, window.location.pathname)
-      })
-      .catch((exchangeError) => {
+      } catch (exchangeError) {
         finishWithError(
           exchangeError instanceof Error ? exchangeError.message : 'Erro desconhecido ao trocar token.',
         )
-      })
+      }
+    }
+
+    handleCode()
   }, [exchangeToken])
 
   return (
     <main className="app-shell">
       <section className="hero">
-        <p className="eyebrow">Callback HubSpot · Netlify</p>
-        <h1>Login OAuth Nvoip</h1>
-        <p>
-          Use o botão abaixo para abrir uma janela controlada de autenticação. Ao finalizar o fluxo,
-          trocamos o code por token e persistimos no localStorage.
-        </p>
-        <div className="hero-actions">
-          <button className="primary-button" type="button" onClick={startOAuth}>
-            Conectar com Nvoip
+        <div className="oauth-card">
+          <div className="logo-row">
+            <span className="logo-placeholder primary-logo">HS</span>
+            <span className="logo-placeholder secondary-logo">Nvoip</span>
+          </div>
+          <p className="card-subtitle">Login to continue</p>
+          <button className="oauth-card-button" type="button" onClick={startOAuth}>
+            Login with Nvoip
           </button>
-          {token ? (
-            <button className="ghost-button" type="button" onClick={clearToken}>
-              Limpar token
+          <p className="terms-text">
+            By logging in, you agree to our <span>Terms of Service</span>
+          </p>
+        </div>
+        <div className="hero-messaging">
+          <p className="eyebrow">Callback HubSpot · Netlify</p>
+          <h1>Login OAuth Nvoip</h1>
+          <p>
+            A tela acima simula um card pequeno como o do app HubSpot. Após o OAuth, trocamos o code
+            por token, gravamos no localStorage e exibimos o resultado.
+          </p>
+          <div className="hero-actions">
+            <button className="primary-button" type="button" onClick={startOAuth}>
+              Conectar com Nvoip
             </button>
-          ) : null}
+            {token ? (
+              <button className="ghost-button" type="button" onClick={clearToken}>
+                Limpar token
+              </button>
+            ) : null}
+          </div>
+          <div className="status-card" aria-live="polite">
+            <span>{status}</span>
+            {error ? <span className="status-error">{error}</span> : null}
+          </div>
+          {infoMessage ? <div className="info-box">{infoMessage}</div> : null}
+          {token ? (
+            <pre className="token-preview">{JSON.stringify(token, null, 2)}</pre>
+          ) : (
+            <p className="token-placeholder">Nenhum token salvo ainda.</p>
+          )}
         </div>
-        <div className="status-card" aria-live="polite">
-          <span>{status}</span>
-          {error ? <span className="status-error">{error}</span> : null}
-        </div>
-        {token ? (
-          <pre className="token-preview">{JSON.stringify(token, null, 2)}</pre>
-        ) : (
-          <p className="token-placeholder">Nenhum token salvo ainda.</p>
-        )}
       </section>
 
       <section className="panel-grid">

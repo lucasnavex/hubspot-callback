@@ -13,8 +13,8 @@ const normalizeQuery = (event) => {
 }
 
 const exchangeToken = async (code, redirectUri) => {
-  const clientId =  DEFAULT_CLIENT_ID
-  const clientSecret =  DEFAULT_CLIENT_SECRET
+  const clientId = 'Hubspot'
+  const clientSecret =  'c4d7a76a-4239-4dd9-ac1d-530a0e4098e2'
   const tokenUrl = process.env.HUBSPOT_TOKEN_URL ?? 'https://api.nvoip.com.br/auth/oauth2/token'
 
   if (!code || !redirectUri || !clientId || !clientSecret) return null

@@ -1,8 +1,8 @@
 const DEFAULT_SCOPES = 'openid call:make call:query sms:send whatsapp:send whatsapp:templates'
 
 export const nvoipAuthConfig = {
-  redirectUri: 'https://hubspot-callback.netlify.app/nvoip-oauth-callback',
-  fallbackRedirect: 'https://hubspot-callback.netlify.app/nvoip-oauth-callback',
+  redirectUri: 'https://integration-nvoip.netlify.app/nvoip-oauth-callback',
+  fallbackRedirect: 'https://integration-nvoip.netlify.app/nvoip-oauth-callback',
   clientId: import.meta.env.VITE_HUBSPOT_CLIENT_ID ?? 'Hubspot',
   clientSecret: import.meta.env.VITE_HUBSPOT_CLIENT_SECRET ?? 'c4d7a76a-4239-4dd9-ac1d-530a0e4098e2',
   authUrl:
@@ -14,7 +14,7 @@ export const nvoipAuthConfig = {
     .map((scope: string) => scope.trim())
     .filter(Boolean),
   permittedUrls: {
-    fetch: ['https://hubspot-callback.netlify.app'],
-    iframe: ['https://hubspot-callback.netlify.app'],
+    fetch: ['https://integration-nvoip.netlify.app'],
+    iframe: ['https://integration-nvoip.netlify.app'],
   },
 }

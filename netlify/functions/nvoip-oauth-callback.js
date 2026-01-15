@@ -99,7 +99,7 @@ exports.handler = async (event) => {
   const decodedState = parseState(state)
   const destination = buildDestinationUrl(
     decodedState,
-    process.env.HUBSPOT_REDIRECT_URI ?? 'https://hubspot-callback.netlify.app/nvoip-oauth-callback',
+    process.env.HUBSPOT_REDIRECT_URI ?? 'https://integration-nvoip.netlify.app/nvoip-oauth-callback',
   )
 
   let tokenResult = null

@@ -48,7 +48,7 @@ function App() {
   }, [])
 
   const exchangeToken = useCallback(
-    async (code: string) => {
+    async (code: string): Promise<TokenResponse> => {
       setStatus('Trocando o code por token...')
       setError(null)
       const url = new URL(tokenExchangeUrl, window.location.origin)
@@ -61,11 +61,9 @@ function App() {
         throw new Error(message || 'Falha ao trocar token.')
       }
 
-      const tokenResponse = (await response.json()) as TokenResponse
-      storeToken(tokenResponse)
-      setStatus('Token salvo no localStorage.')
+      return (await response.json()) as TokenResponse
     },
-    [redirectUriForAuth, storeToken, tokenExchangeUrl],
+    [redirectUriForAuth, tokenExchangeUrl],
   )
 
   const buildAuthorizationUrl = useCallback(
@@ -111,14 +109,16 @@ function App() {
 
       if (payload.type === 'nvoip-oauth-success') {
       console.log('[OAuth popup] sucesso recebido')
-        setStatus('Token salvo no localStorage.')
-        setError(null)
-        const saved = localStorage.getItem(tokenStorageKey)
-        if (saved) {
-          try {
-            setToken(JSON.parse(saved) as TokenResponse)
-          } catch {
-            setToken(null)
+        if (payload.token) {
+          storeToken(payload.token as TokenResponse)
+        } else {
+          const saved = localStorage.getItem(tokenStorageKey)
+          if (saved) {
+            try {
+              setToken(JSON.parse(saved) as TokenResponse)
+            } catch {
+              setToken(null)
+            }
           }
         }
       }
@@ -176,12 +176,16 @@ function App() {
       setStatus('Trocando o code por token...')
       console.log('[OAuth callback] iniciando troca de token')
       try {
-        await exchangeToken(code)
+        const tokenResponse = await exchangeToken(code)
         console.log('[OAuth callback] troca concluída')
         setStatus('Token salvo no localStorage.')
         setError(null)
+        storeToken(tokenResponse)
         if (isPopup) {
-          window.opener?.postMessage({ type: 'nvoip-oauth-success' }, window.location.origin)
+          window.opener?.postMessage(
+            { type: 'nvoip-oauth-success', token: tokenResponse },
+            window.location.origin,
+          )
           window.close()
         }
         window.history.replaceState({}, document.title, window.location.pathname)

@@ -19,6 +19,7 @@ const stateStorageKey = 'nvoip.oauth.state'
 function App() {
   const { clientId, authUrl, tokenExchangeUrl, appRedirectPath, scopes } = nvoipAuthConfig
   const [showCard, setShowCard] = useState(true)
+  const [isLogged, setIsLogged] = useState(false)
 
   const redirectUriForAuth = useMemo(() => {
     return new URL(appRedirectPath, window.location.origin).toString()
@@ -27,6 +28,7 @@ function App() {
   const storeToken = useCallback((tokenResponse: TokenResponse) => {
     localStorage.setItem(tokenStorageKey, JSON.stringify(tokenResponse))
     setShowCard(false)
+    setIsLogged(true)
   }, [])
 
   const exchangeToken = useCallback(
@@ -63,6 +65,7 @@ function App() {
 
   const startOAuth = useCallback(() => {
     setShowCard(true)
+    setIsLogged(false)
     const state = crypto.randomUUID()
     sessionStorage.setItem(stateStorageKey, state)
     const popup = window.open(
@@ -153,25 +156,40 @@ function App() {
       {showCard ? (
         <section className="hero">
           <div className="oauth-card">
-          <div className="logo-row">
-          <img src={hubspotLogo} alt="HubSpot" className="logo-image" />
-          <div className="logo-dots">
-            <span />
-            <span />
-            <span />
-          </div>
-          <img src={nvoipLogo} alt="Nvoip" className="logo-image"  />
-        </div>
+            <div className="logo-row">
+              <img src={hubspotLogo} alt="HubSpot" className="logo-image" />
+              <div className="logo-dots">
+                <span />
+                <span />
+                <span />
+              </div>
+              <img src={nvoipLogo} alt="Nvoip" className="logo-image" />
+            </div>
             <p className="card-subtitle">Faça login para continuar</p>
             <button className="oauth-card-button" type="button" onClick={startOAuth}>
               Entrar com a Nvoip
             </button>
-          <p className="terms-text">
-            Ao efetuar o login, você concorda com nossos{' '}
-            <a href="https://www.nvoip.com.br/documentos/termo-de-uso.pdf?swcfpc=1" target="_blank" rel="noreferrer">
-              Termos de Serviço
-            </a>
-          </p>
+            <p className="terms-text">
+              Ao efetuar o login, você concorda com nossos{' '}
+              <a href="https://www.nvoip.com.br/documentos/termo-de-uso.pdf?swcfpc=1" target="_blank" rel="noreferrer">
+                Termos de Serviço
+              </a>
+            </p>
+          </div>
+        </section>
+      ) : isLogged ? (
+        <section className="hero logged">
+          <div className="oauth-card">
+            <div className="logo-row">
+              <img src={hubspotLogo} alt="HubSpot" className="logo-image" />
+              <div className="logo-dots">
+                <span />
+                <span />
+                <span />
+              </div>
+              <img src={nvoipLogo} alt="Nvoip" className="logo-image" />
+            </div>
+            <p className="card-subtitle">Você está conectado</p>
           </div>
         </section>
       ) : (

@@ -1,7 +1,7 @@
 :root {
   font-family: 'Inter', system-ui, sans-serif;
-  background-color: #070c16;
-  color: #e2e8f0;
+  background-color: #f3f4f6;
+  color: #111827;
 }
 
 * {
@@ -10,11 +10,38 @@
 
 .app-shell {
   min-height: 100vh;
-  background: #fff;
+  width: 100%;
+  background: #f3f4f6;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: 3rem 1.5rem;
+}
+
+.hero {
+  width: min(420px, 100%);
+  padding: 2.5rem;
+  border-radius: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero.logged {
+  flex-direction: column;
+}
+
+.hero.logged .card-subtitle {
+  font-size: 1.1rem;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.logged-url {
+  margin-top: 0.5rem;
+  font-size: 0.95rem;
+  color: #6b7280;
+  text-align: center;
 }
 
 .blank-screen {

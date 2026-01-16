@@ -27,6 +27,12 @@ declare global {
       context?: {
         portalId?: string
         accountId?: string
+        getCurrentPortalId?: () => string | null
+        getCurrentAccountId?: () => string | null
+      }
+      api?: {
+        getCurrentPortalId?: () => Promise<string>
+        getCurrentAccountId?: () => Promise<string>
       }
     }
   }
@@ -45,16 +51,86 @@ function App() {
   }, [appRedirectPath])
 
   // Obtém portalId e accountId da URL ou do contexto do HubSpot
-  const getHubSpotIds = useCallback(() => {
+  const getHubSpotIds = useCallback(async () => {
+    // 1. Tenta obter da URL query params primeiro (mais confiável)
     const params = new URLSearchParams(window.location.search)
-    const portalId = params.get('portalId') || window.hubspot?.context?.portalId || ''
-    const accountId = params.get('accountId') || window.hubspot?.context?.accountId || ''
-    return { portalId, accountId }
+    let portalId = params.get('portalId')
+    let accountId = params.get('accountId')
+
+    // 2. Se não estiver na URL, tenta do contexto do HubSpot (se disponível)
+    if (!portalId || !accountId) {
+      // Tenta métodos síncronos do HubSpot
+      if (window.hubspot?.context) {
+        portalId = portalId || window.hubspot.context.portalId || null
+        accountId = accountId || window.hubspot.context.accountId || null
+
+        // Tenta métodos getCurrent* se disponíveis
+        if (window.hubspot.context.getCurrentPortalId) {
+          try {
+            const id = window.hubspot.context.getCurrentPortalId()
+            if (id) portalId = portalId || id
+          } catch (e) {
+            console.warn('Erro ao obter portalId via getCurrentPortalId:', e)
+          }
+        }
+
+        if (window.hubspot.context.getCurrentAccountId) {
+          try {
+            const id = window.hubspot.context.getCurrentAccountId()
+            if (id) accountId = accountId || id
+          } catch (e) {
+            console.warn('Erro ao obter accountId via getCurrentAccountId:', e)
+          }
+        }
+      }
+
+      // 3. Tenta métodos assíncronos da API do HubSpot
+      if ((!portalId || !accountId) && window.hubspot?.api) {
+        try {
+          if (!portalId && window.hubspot.api.getCurrentPortalId) {
+            portalId = await window.hubspot.api.getCurrentPortalId()
+          }
+          if (!accountId && window.hubspot.api.getCurrentAccountId) {
+            accountId = await window.hubspot.api.getCurrentAccountId()
+          }
+        } catch (e) {
+          console.warn('Erro ao obter IDs via HubSpot API:', e)
+        }
+      }
+
+      // 4. Tenta extrair do pathname (formato: /app/:portalId/:accountId/...)
+      if (!portalId || !accountId) {
+        const pathMatch = window.location.pathname.match(/\/(\d+)\/([^/]+)/)
+        if (pathMatch) {
+          if (!portalId) portalId = pathMatch[1]
+          if (!accountId) accountId = pathMatch[2]
+        }
+      }
+    }
+
+    const result = {
+      portalId: portalId || '',
+      accountId: accountId || '',
+    }
+
+    // Log para debug (remova em produção se necessário)
+    if (!result.portalId || !result.accountId) {
+      console.warn('Não foi possível obter portalId ou accountId:', {
+        portalId: result.portalId,
+        accountId: result.accountId,
+        url: window.location.href,
+        pathname: window.location.pathname,
+        search: window.location.search,
+        hasHubSpotContext: !!window.hubspot,
+      })
+    }
+
+    return result
   }, [])
 
   // Recupera token do Netlify storage
   const retrieveTokenFromNetlify = useCallback(async (): Promise<TokenResponse | null> => {
-    const { portalId, accountId } = getHubSpotIds()
+    const { portalId, accountId } = await getHubSpotIds()
     
     if (!portalId || !accountId) {
       console.warn('portalId ou accountId não disponíveis para recuperar token')
@@ -93,26 +169,43 @@ function App() {
   // Armazena token no Netlify storage
   const storeTokenInNetlify = useCallback(
     async (tokenResponse: TokenResponse): Promise<void> => {
-      const { portalId, accountId } = getHubSpotIds()
+      // Obtém IDs (aguarda se for assíncrono)
+      const { portalId, accountId } = await getHubSpotIds()
       
       if (!portalId || !accountId) {
-        throw new Error('portalId e accountId são obrigatórios para armazenar token')
+        const errorMsg = `portalId e accountId são obrigatórios para armazenar token. portalId: "${portalId}", accountId: "${accountId}"`
+        console.error(errorMsg, {
+          url: window.location.href,
+          search: window.location.search,
+        })
+        throw new Error(errorMsg)
       }
 
       const serverlessFunctionName = 'store-nvoip-token'
+      
+      // Monta payload exatamente como o Netlify espera
       const payload = {
-        portalId,
-        accountId,
+        portalId: portalId.trim(),
+        accountId: accountId.trim(),
         tokens: {
           access_token: tokenResponse.access_token,
-          refresh_token: tokenResponse.refresh_token,
-          expires_in: tokenResponse.expires_in,
-          token_type: tokenResponse.token_type,
-          scope: tokenResponse.scope,
+          refresh_token: tokenResponse.refresh_token || null,
+          expires_in: tokenResponse.expires_in || null,
+          token_type: tokenResponse.token_type || 'Bearer',
+          scope: tokenResponse.scope || null,
         },
       }
 
+      // Log para debug
+      console.log('Armazenando token no Netlify:', {
+        portalId: payload.portalId,
+        accountId: payload.accountId,
+        hasAccessToken: !!payload.tokens.access_token,
+      })
+
       try {
+        const secret = import.meta.env.VITE_NVOIP_SECRET || ''
+        
         // Tenta usar runServerlessFunction primeiro (se disponível)
         if (window.hubspot?.serverless?.runServerlessFunction) {
           await window.hubspot.serverless.runServerlessFunction({
@@ -128,16 +221,25 @@ function App() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-nvoip-secret': import.meta.env.VITE_NVOIP_SECRET || '',
+              'x-nvoip-secret': secret,
             },
             body: JSON.stringify(payload),
           })
 
           if (!response.ok) {
             const errorText = await response.text()
-            throw new Error(
-              `Falha ao armazenar token no Netlify (${response.status}): ${errorText}`,
-            )
+            const errorMessage = `Falha ao armazenar token no Netlify (${response.status}): ${errorText}`
+            
+            // Log detalhado em caso de erro
+            console.error('Erro ao armazenar token:', {
+              status: response.status,
+              statusText: response.statusText,
+              errorText,
+              payload: { ...payload, tokens: { ...payload.tokens, access_token: '[REDACTED]' } },
+              hasSecret: !!secret,
+            })
+            
+            throw new Error(errorMessage)
           }
         }
       } catch (error) {

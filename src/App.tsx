@@ -24,6 +24,10 @@ declare global {
         }) => Promise<unknown>
       }
       fetch?: (url: string, options?: RequestInit) => Promise<Response>
+      context?: {
+        portalId?: string
+        accountId?: string
+      }
     }
   }
 }
@@ -40,55 +44,109 @@ function App() {
     return new URL(appRedirectPath, window.location.origin).toString()
   }, [appRedirectPath])
 
-  const storeTokenInHubSpot = useCallback(
+  // Obtém portalId e accountId da URL ou do contexto do HubSpot
+  const getHubSpotIds = useCallback(() => {
+    const params = new URLSearchParams(window.location.search)
+    const portalId = params.get('portalId') || window.hubspot?.context?.portalId || ''
+    const accountId = params.get('accountId') || window.hubspot?.context?.accountId || ''
+    return { portalId, accountId }
+  }, [])
+
+  // Recupera token do Netlify storage
+  const retrieveTokenFromNetlify = useCallback(async (): Promise<TokenResponse | null> => {
+    const { portalId, accountId } = getHubSpotIds()
+    
+    if (!portalId || !accountId) {
+      console.warn('portalId ou accountId não disponíveis para recuperar token')
+      return null
+    }
+
+    try {
+      const serverlessUrl = `/.netlify/functions/retrieve-nvoip-token?portalId=${encodeURIComponent(portalId)}&accountId=${encodeURIComponent(accountId)}`
+      
+      // Usa fetch normal ou hubspot.fetch se disponível
+      const fetchFn = window.hubspot?.fetch || fetch
+      const response = await fetchFn(serverlessUrl, {
+        method: 'GET',
+        headers: {
+          'x-nvoip-secret': import.meta.env.VITE_NVOIP_SECRET || '',
+        },
+      })
+
+      if (response.status === 404) {
+        // Token não encontrado, retorna null
+        return null
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Falha ao recuperar token (${response.status}): ${errorText}`)
+      }
+
+      return (await response.json()) as TokenResponse
+    } catch (error) {
+      console.error('Erro ao recuperar token do Netlify:', error)
+      return null
+    }
+  }, [getHubSpotIds])
+
+  // Armazena token no Netlify storage
+  const storeTokenInNetlify = useCallback(
     async (tokenResponse: TokenResponse): Promise<void> => {
-      if (!window.hubspot) {
-        throw new Error('HubSpot context não está disponível')
+      const { portalId, accountId } = getHubSpotIds()
+      
+      if (!portalId || !accountId) {
+        throw new Error('portalId e accountId são obrigatórios para armazenar token')
       }
 
       const serverlessFunctionName = 'store-nvoip-token'
-      const parameters = {
-        access_token: tokenResponse.access_token,
-        refresh_token: tokenResponse.refresh_token,
-        expires_in: tokenResponse.expires_in,
-        token_type: tokenResponse.token_type,
-        scope: tokenResponse.scope,
+      const payload = {
+        portalId,
+        accountId,
+        tokens: {
+          access_token: tokenResponse.access_token,
+          refresh_token: tokenResponse.refresh_token,
+          expires_in: tokenResponse.expires_in,
+          token_type: tokenResponse.token_type,
+          scope: tokenResponse.scope,
+        },
       }
 
       try {
-        // Tenta usar runServerlessFunction primeiro
-        if (window.hubspot.serverless?.runServerlessFunction) {
+        // Tenta usar runServerlessFunction primeiro (se disponível)
+        if (window.hubspot?.serverless?.runServerlessFunction) {
           await window.hubspot.serverless.runServerlessFunction({
             name: serverlessFunctionName,
-            parameters,
+            parameters: payload,
           })
-        } else if (window.hubspot.fetch) {
+        } else {
           // Fallback para fetch direto
-          const serverlessUrl = `https://${window.location.hostname}/.netlify/functions/${serverlessFunctionName}`
-          const response = await window.hubspot.fetch(serverlessUrl, {
+          const serverlessUrl = `/.netlify/functions/${serverlessFunctionName}`
+          const fetchFn = window.hubspot?.fetch || fetch
+          
+          const response = await fetchFn(serverlessUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'x-nvoip-secret': import.meta.env.VITE_NVOIP_SECRET || '',
             },
-            body: JSON.stringify(parameters),
+            body: JSON.stringify(payload),
           })
 
           if (!response.ok) {
             const errorText = await response.text()
             throw new Error(
-              `Falha ao armazenar token no HubSpot (${response.status}): ${errorText}`,
+              `Falha ao armazenar token no Netlify (${response.status}): ${errorText}`,
             )
           }
-        } else {
-          throw new Error('Nenhum método disponível para chamar função serverless do HubSpot')
         }
       } catch (error) {
         const errorMessage =
-          error instanceof Error ? error.message : 'Erro desconhecido ao armazenar token no HubSpot'
+          error instanceof Error ? error.message : 'Erro desconhecido ao armazenar token no Netlify'
         throw new Error(errorMessage)
       }
     },
-    [],
+    [getHubSpotIds],
   )
 
   const storeToken = useCallback(
@@ -150,6 +208,28 @@ function App() {
     }
   }, [buildAuthorizationUrl])
 
+  // Recupera token ao iniciar se estiver em iframe do HubSpot
+  useEffect(() => {
+    const loadStoredToken = async () => {
+      const isIframe = window.self !== window.top
+      
+      // Só tenta recuperar se estiver em iframe (contexto HubSpot)
+      if (!isIframe) return
+
+      try {
+        const storedToken = await retrieveTokenFromNetlify()
+        if (storedToken) {
+          await storeToken(storedToken)
+        }
+      } catch (error) {
+        console.error('Erro ao carregar token armazenado:', error)
+        // Continua normalmente mesmo se não conseguir recuperar
+      }
+    }
+
+    loadStoredToken()
+  }, [retrieveTokenFromNetlify, storeToken])
+
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return
@@ -162,21 +242,21 @@ function App() {
           const isIframe = window.self !== window.top
 
           try {
-            // Se estiver em iframe do HubSpot, armazena no HubSpot primeiro
+            // Se estiver em iframe do HubSpot, armazena no Netlify primeiro
             if (isIframe) {
               try {
-                await storeTokenInHubSpot(tokenResponse)
-              } catch (hubspotError) {
-                console.error('Erro ao armazenar token no HubSpot:', hubspotError)
+                await storeTokenInNetlify(tokenResponse)
+              } catch (netlifyError) {
+                console.error('Erro ao armazenar token no Netlify:', netlifyError)
                 // Notifica erro ao HubSpot se estiver em iframe
                 if (window.parent) {
                   window.parent.postMessage(
                     {
                       type: 'nvoip-oauth-error',
                       message:
-                        hubspotError instanceof Error
-                          ? hubspotError.message
-                          : 'Erro ao armazenar token no HubSpot',
+                        netlifyError instanceof Error
+                          ? netlifyError.message
+                          : 'Erro ao armazenar token no Netlify',
                     },
                     window.location.origin,
                   )
@@ -198,7 +278,7 @@ function App() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [storeToken, storeTokenInHubSpot])
+  }, [storeToken, storeTokenInNetlify])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -240,17 +320,17 @@ function App() {
         try {
           const tokenResponse = await exchangeToken(code)
 
-          // Se estiver em iframe, armazena no HubSpot ANTES de qualquer notificação
-          let hubspotStoreError: Error | null = null
+          // Se estiver em iframe, armazena no Netlify ANTES de qualquer notificação
+          let netlifyStoreError: Error | null = null
           if (isIframe) {
             try {
-              await storeTokenInHubSpot(tokenResponse)
-            } catch (hubspotError) {
-              hubspotStoreError =
-                hubspotError instanceof Error
-                  ? hubspotError
-                  : new Error('Erro desconhecido ao armazenar token no HubSpot')
-              console.error('Erro ao armazenar token no HubSpot:', hubspotStoreError)
+              await storeTokenInNetlify(tokenResponse)
+            } catch (netlifyError) {
+              netlifyStoreError =
+                netlifyError instanceof Error
+                  ? netlifyError
+                  : new Error('Erro desconhecido ao armazenar token no Netlify')
+              console.error('Erro ao armazenar token no Netlify:', netlifyStoreError)
             }
           }
 
@@ -265,13 +345,13 @@ function App() {
             )
             window.close()
           } else if (isIframe && window.parent) {
-            // Para iframe, só notifica após tentar armazenar no HubSpot
-            if (hubspotStoreError) {
+            // Para iframe, só notifica após tentar armazenar no Netlify
+            if (netlifyStoreError) {
               // Notifica erro ao HubSpot
               window.parent.postMessage(
                 {
                   type: 'nvoip-oauth-error',
-                  message: hubspotStoreError.message,
+                  message: netlifyStoreError.message,
                   token: tokenResponse, // Envia token mesmo em caso de erro para permitir retry
                 },
                 window.location.origin,
@@ -306,7 +386,7 @@ function App() {
       }
 
     handleCode()
-  }, [exchangeToken, storeToken, storeTokenInHubSpot])
+  }, [exchangeToken, storeToken, storeTokenInNetlify])
 
   return (
     <main className={`app-shell ${showCard ? '' : 'blank'}`}>

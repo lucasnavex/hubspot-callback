@@ -384,6 +384,42 @@ function App() {
     return () => window.removeEventListener('message', handleProvideIds)
   }, [])
 
+  // Solicita IDs ao parent via postMessage se não estiverem disponíveis
+  useEffect(() => {
+    const requestIdsIfNeeded = async () => {
+      const isIframe = window.self !== window.top
+      
+      // Só solicita se estiver em iframe
+      if (!isIframe || !window.parent) return
+
+      // Aguarda um pouco para garantir que o parent esteja pronto
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      // Verifica se já tem IDs na URL
+      const params = new URLSearchParams(window.location.search)
+      const hasIdsInUrl = params.get('portalId') && params.get('accountId')
+      
+      // Se não tem IDs no estado nem na URL, solicita ao parent
+      if (!hasIdsInUrl && !hubspotIds) {
+        console.log('[postMessage] Solicitando IDs ao parent (HubSpot)...')
+        
+        try {
+          // Envia mensagem pedindo os IDs
+          // Usa "*" como targetOrigin para permitir comunicação com qualquer origem (parent do HubSpot)
+          window.parent.postMessage({ type: 'nvoip-request-ids' }, '*')
+        } catch (error) {
+          console.warn('[postMessage] Erro ao solicitar IDs ao parent:', error)
+        }
+      } else if (hasIdsInUrl) {
+        console.log('[postMessage] IDs já disponíveis na URL, não é necessário solicitar')
+      } else if (hubspotIds) {
+        console.log('[postMessage] IDs já disponíveis no estado, não é necessário solicitar')
+      }
+    }
+
+    requestIdsIfNeeded()
+  }, [hubspotIds])
+
   // Recupera token ao iniciar se estiver em iframe do HubSpot
   useEffect(() => {
     const loadStoredToken = async () => {

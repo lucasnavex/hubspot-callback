@@ -40,8 +40,6 @@ declare global {
 
 const tokenStorageKey = 'nvoip.oauth.token'
 const stateStorageKey = 'nvoip.oauth.state'
-const HUBSPOT_PARENT_ORIGIN =
-  import.meta.env.VITE_HUBSPOT_PARENT_ORIGIN || 'https://app.hubspot.com'
 
 function App() {
   const { clientId, authUrl, tokenExchangeUrl, appRedirectPath, scopes } = nvoipAuthConfig
@@ -50,29 +48,6 @@ function App() {
   
   // Armazena portalId e accountId recebidos via postMessage ou URL
   const [hubspotIds, setHubspotIds] = useState<{ portalId: string; accountId: string } | null>(null)
-
-  const sendTokensToParent = useCallback((tokens: TokenResponse) => {
-    const isIframe = window.self !== window.top
-    if (!isIframe || !window.parent) return
-
-    try {
-      window.parent.postMessage(
-        {
-          type: 'NVOIP_OAUTH_TOKENS',
-          tokens: {
-            access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token,
-            expires_in: tokens.expires_in,
-            token_type: tokens.token_type,
-            scope: tokens.scope,
-          },
-        },
-        HUBSPOT_PARENT_ORIGIN,
-      )
-    } catch (error) {
-      console.error('Falha ao enviar tokens para o parent (HubSpot):', error)
-    }
-  }, [])
 
   const redirectUriForAuth = useMemo(() => {
     return new URL(appRedirectPath, window.location.origin).toString()
@@ -495,7 +470,7 @@ function App() {
                           ? netlifyError.message
                           : 'Erro ao armazenar token no Netlify',
                     },
-                    HUBSPOT_PARENT_ORIGIN,
+                    window.location.origin,
                   )
                 }
                 // Ainda armazena localmente mesmo em caso de erro
@@ -504,11 +479,6 @@ function App() {
 
             // Armazena localmente e atualiza UI
             await storeToken(tokenResponse)
-
-            // Envia tokens para o HubSpot (parent) quando estiver em iframe
-            if (isIframe) {
-              sendTokensToParent(tokenResponse)
-            }
           } catch (error) {
             console.error('Erro ao processar token:', error)
             // Ainda armazena localmente mesmo em caso de erro
@@ -520,7 +490,7 @@ function App() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [sendTokensToParent, storeToken, storeTokenInNetlify])
+  }, [storeToken, storeTokenInNetlify])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -536,7 +506,7 @@ function App() {
         window.opener?.postMessage({ type: 'nvoip-oauth-error', message }, window.location.origin)
         window.close()
       } else if (isIframe && window.parent) {
-        window.parent.postMessage({ type: 'nvoip-oauth-error', message }, HUBSPOT_PARENT_ORIGIN)
+        window.parent.postMessage({ type: 'nvoip-oauth-error', message }, window.location.origin)
         // Não fecha iframe automaticamente, deixa o HubSpot gerenciar
       }
     }
@@ -587,9 +557,6 @@ function App() {
             )
             window.close()
           } else if (isIframe && window.parent) {
-            // Envia tokens para o HubSpot (parent) via postMessage
-            sendTokensToParent(tokenResponse)
-
             // Para iframe, só notifica após tentar armazenar no Netlify
             if (netlifyStoreError) {
               // Notifica erro ao HubSpot
@@ -599,13 +566,13 @@ function App() {
                   message: netlifyStoreError.message,
                   token: tokenResponse, // Envia token mesmo em caso de erro para permitir retry
                 },
-                HUBSPOT_PARENT_ORIGIN,
+                window.location.origin,
               )
             } else {
               // Notifica sucesso ao HubSpot
               window.parent.postMessage(
                 { type: 'nvoip-oauth-success', token: tokenResponse },
-                HUBSPOT_PARENT_ORIGIN,
+                window.location.origin,
               )
             }
             // Não fecha o iframe, deixa o HubSpot gerenciar o fechamento
@@ -622,7 +589,7 @@ function App() {
           if (isIframe && window.parent) {
             window.parent.postMessage(
               { type: 'nvoip-oauth-error', message: errorMessage },
-              HUBSPOT_PARENT_ORIGIN,
+              window.location.origin,
             )
           } else {
             await finishWithError(errorMessage)
@@ -631,7 +598,7 @@ function App() {
       }
 
     handleCode()
-  }, [exchangeToken, sendTokensToParent, storeToken, storeTokenInNetlify])
+  }, [exchangeToken, storeToken, storeTokenInNetlify])
 
   return (
     <main className={`app-shell ${showCard ? '' : 'blank'}`}>

@@ -51,9 +51,61 @@ function App() {
   // Armazena portalId e accountId recebidos via postMessage ou URL
   const [hubspotIds, setHubspotIds] = useState<{ portalId: string; accountId: string } | null>(null)
 
-  // Não usamos mais postMessage para compartilhar tokens com o HubSpot.
-  // O token é persistido em backend compartilhado (Netlify Functions),
-  // e a extensão do HubSpot lê diretamente desse backend.
+  const sendTokensToParent = useCallback((tokens: TokenResponse) => {
+    const isIframe = window.self !== window.top
+    
+    console.log('[sendTokensToParent] Verificando condições:', {
+      isIframe,
+      hasParent: !!window.parent,
+      hasTokens: !!tokens,
+      hasAccessToken: !!tokens?.access_token,
+      windowLocation: window.location.href,
+      parentOrigin: window.parent?.location?.origin || 'N/A (cross-origin)',
+    })
+
+    if (!isIframe) {
+      console.warn('[sendTokensToParent] Não está em iframe, abortando envio')
+      return
+    }
+
+    if (!window.parent) {
+      console.warn('[sendTokensToParent] window.parent não disponível, abortando envio')
+      return
+    }
+
+    if (!tokens || !tokens.access_token) {
+      console.warn('[sendTokensToParent] Tokens inválidos ou sem access_token:', tokens)
+      return
+    }
+
+    const messagePayload = {
+      type: 'NVOIP_OAUTH_TOKENS',
+      tokens: {
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expires_in: tokens.expires_in,
+        token_type: tokens.token_type,
+        scope: tokens.scope,
+      },
+    }
+
+    console.log('[sendTokensToParent] Enviando postMessage para HubSpot:', {
+      type: messagePayload.type,
+      hasAccessToken: !!messagePayload.tokens.access_token,
+      hasRefreshToken: !!messagePayload.tokens.refresh_token,
+      expiresIn: messagePayload.tokens.expires_in,
+      tokenType: messagePayload.tokens.token_type,
+      targetOrigin: '*',
+      fullPayload: messagePayload,
+    })
+
+    try {
+      window.parent.postMessage(messagePayload, '*')
+      console.log('[sendTokensToParent] ✅ postMessage enviado com sucesso para window.parent')
+    } catch (error) {
+      console.error('[sendTokensToParent] ❌ Falha ao enviar tokens para o parent (HubSpot):', error)
+    }
+  }, [])
 
   const redirectUriForAuth = useMemo(() => {
     return new URL(appRedirectPath, window.location.origin).toString()
@@ -311,21 +363,31 @@ function App() {
 
   const storeToken = useCallback(
     async (tokenResponse: TokenResponse): Promise<void> => {
+      const isIframe = window.self !== window.top
+      
       console.log('[storeToken] Salvando token no localStorage:', {
+        isIframe,
         hasAccessToken: !!tokenResponse.access_token,
         storageKey: tokenStorageKey,
       })
 
-      // Armazena localmente para uso visual/local
+      // Armazena localmente também
       localStorage.setItem(tokenStorageKey, JSON.stringify(tokenResponse))
-
+      
       console.log('[storeToken] ✅ Token salvo no localStorage')
-
+      
+      // Se estiver em iframe, envia imediatamente para o HubSpot
+      // (não depende do evento storage, que só dispara entre janelas diferentes)
+      if (isIframe && window.parent) {
+        console.log('[storeToken] Enviando tokens para HubSpot imediatamente após salvar...')
+        sendTokensToParent(tokenResponse)
+      }
+      
       // Atualiza UI
       setShowCard(false)
       setIsLogged(true)
     },
-    [],
+    [sendTokensToParent],
   )
 
   const exchangeToken = useCallback(
@@ -456,10 +518,144 @@ function App() {
     loadStoredToken()
   }, [retrieveTokenFromNetlify, storeToken])
 
-  // Fallback baseado em localStorage não é mais necessário para integrar com o HubSpot.
-  // A extensão deve ler diretamente do backend compartilhado.
+  // Verifica tokens no localStorage e envia para o HubSpot (fallback/backup)
+  useEffect(() => {
+    const isIframe = window.self !== window.top
+    if (!isIframe || !window.parent) return
 
-  // Listener de mensagens de popup não é mais necessário para o fluxo com HubSpot.
+    const checkLocalStorageAndSend = () => {
+      try {
+        const stored = localStorage.getItem(tokenStorageKey)
+        console.log('[checkLocalStorageAndSend] Verificando localStorage:', {
+          hasStored: !!stored,
+          storageKey: tokenStorageKey,
+          isIframe: window.self !== window.top,
+          hasParent: !!window.parent,
+        })
+        
+        if (stored) {
+          try {
+            const tokens = JSON.parse(stored) as TokenResponse
+            if (tokens && tokens.access_token) {
+              console.log('[App] ✅ Token encontrado no localStorage, enviando para HubSpot...', {
+                access_token: `${tokens.access_token.substring(0, 20)}...`,
+                hasRefreshToken: !!tokens.refresh_token,
+              })
+              sendTokensToParent(tokens)
+            } else {
+              console.warn('[App] Token no localStorage mas sem access_token:', tokens)
+            }
+          } catch (e) {
+            console.warn('[App] Erro ao parsear token do localStorage:', e)
+          }
+        } else {
+          console.log('[App] Nenhum token encontrado no localStorage ainda')
+        }
+      } catch (error) {
+        console.warn('[App] Erro ao verificar localStorage:', error)
+      }
+    }
+
+    // Verifica imediatamente
+    checkLocalStorageAndSend()
+
+    // Escuta mudanças no localStorage (quando token é salvo)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === tokenStorageKey && e.newValue) {
+        try {
+          const tokens = JSON.parse(e.newValue) as TokenResponse
+          if (tokens && tokens.access_token) {
+            console.log('[App] Mudança detectada no localStorage, enviando tokens para HubSpot...')
+            sendTokensToParent(tokens)
+          }
+        } catch (e) {
+          console.warn('[App] Erro ao processar mudança no localStorage:', e)
+        }
+      }
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+
+    // Verifica periodicamente como fallback (a cada 3 segundos, por 30 segundos)
+    let checkInterval: ReturnType<typeof setInterval> | null = null
+    let timeout: ReturnType<typeof setTimeout> | null = null
+
+    checkInterval = setInterval(() => {
+      checkLocalStorageAndSend()
+    }, 3000)
+
+    timeout = setTimeout(() => {
+      if (checkInterval) {
+        clearInterval(checkInterval)
+        checkInterval = null
+      }
+    }, 30000)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      if (checkInterval) clearInterval(checkInterval)
+      if (timeout) clearTimeout(timeout)
+    }
+  }, [sendTokensToParent])
+
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
+      const payload = event.data
+      if (!payload || typeof payload !== 'object') return
+
+      if (payload.type === 'nvoip-oauth-success') {
+        if (payload.token) {
+          const tokenResponse = payload.token as TokenResponse
+          const isIframe = window.self !== window.top
+
+          try {
+            // Se estiver em iframe do HubSpot, armazena no Netlify primeiro
+            if (isIframe) {
+              try {
+                await storeTokenInNetlify(tokenResponse)
+              } catch (netlifyError) {
+                console.error('Erro ao armazenar token no Netlify:', netlifyError)
+                // Notifica erro ao HubSpot se estiver em iframe
+                if (window.parent) {
+                  window.parent.postMessage(
+                    {
+                      // Alinha com o listener do HubSpot: "NVOIP_OAUTH_ERROR"
+                      type: 'NVOIP_OAUTH_ERROR',
+                      message:
+                        netlifyError instanceof Error
+                          ? netlifyError.message
+                          : 'Erro ao armazenar token no Netlify',
+                    },
+                    HUBSPOT_PARENT_ORIGIN,
+                  )
+                }
+                // Ainda armazena localmente mesmo em caso de erro
+              }
+            }
+
+            // Armazena localmente e atualiza UI
+            await storeToken(tokenResponse)
+
+            // Envia tokens para o HubSpot (parent) quando estiver em iframe
+            if (isIframe) {
+              console.log('[handleMessage] Modo iframe: enviando tokens para HubSpot via sendTokensToParent')
+              sendTokensToParent(tokenResponse)
+            } else {
+              console.log('[handleMessage] Não está em iframe, não enviando para HubSpot')
+            }
+          } catch (error) {
+            console.error('Erro ao processar token:', error)
+            // Ainda armazena localmente mesmo em caso de erro
+            await storeToken(tokenResponse)
+          }
+        }
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [sendTokensToParent, storeToken, storeTokenInNetlify])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -501,7 +697,7 @@ function App() {
         try {
           const tokenResponse = await exchangeToken(code)
 
-          // Se estiver em iframe, armazena no Netlify ANTES de qualquer outra ação
+          // Se estiver em iframe, armazena no Netlify ANTES de qualquer notificação
           let netlifyStoreError: Error | null = null
           if (isIframe) {
             try {
@@ -515,7 +711,7 @@ function App() {
             }
           }
 
-          // Armazena localmente e atualiza UI (para uso visual)
+          // Armazena localmente e atualiza UI
           await storeToken(tokenResponse)
 
           console.log('[handleCode] Token armazenado localmente, verificando contexto:', {
@@ -526,25 +722,37 @@ function App() {
           })
 
           if (isPopup) {
-            // Para popup standalone, apenas fecha a janela após concluir
-            console.log('[handleCode] Modo popup: finalizando OAuth e fechando janela')
+            // Para popup, notifica e fecha
+            console.log('[handleCode] Modo popup: enviando para opener')
+            window.opener?.postMessage(
+              { type: 'nvoip-oauth-success', token: tokenResponse },
+              window.location.origin,
+            )
             window.close()
           } else if (isIframe && window.parent) {
-            // No contexto HubSpot, o token já está no backend compartilhado.
-            // A extensão deve ler diretamente do backend; não enviamos mais tokens via postMessage.
-            console.log('[handleCode] Modo iframe: token armazenado no backend; extensão deve buscar via backend')
+            // Envia tokens para o HubSpot (parent) via postMessage
+            console.log('[handleCode] Modo iframe: enviando tokens para HubSpot via sendTokensToParent')
+            sendTokensToParent(tokenResponse)
 
+            // Para iframe, só notifica após tentar armazenar no Netlify
             if (netlifyStoreError) {
-              // Opcional: notificar apenas erro genérico ao parent se quiser
+              // Notifica erro ao HubSpot
               window.parent.postMessage(
                 {
                   type: 'NVOIP_OAUTH_ERROR',
                   message: netlifyStoreError.message,
+                  token: tokenResponse, // Envia token mesmo em caso de erro para permitir retry
                 },
                 HUBSPOT_PARENT_ORIGIN,
               )
+            } else {
+              // Notifica sucesso ao HubSpot
+              window.parent.postMessage(
+                { type: 'nvoip-oauth-success', token: tokenResponse },
+                HUBSPOT_PARENT_ORIGIN,
+              )
             }
-            // Não fecha o iframe automaticamente; HubSpot/Extensão controlam o overlay.
+            // Não fecha o iframe, deixa o HubSpot gerenciar o fechamento
           }
 
           window.history.replaceState({}, document.title, window.location.pathname)
@@ -567,7 +775,7 @@ function App() {
       }
 
     handleCode()
-  }, [exchangeToken, storeToken, storeTokenInNetlify])
+  }, [exchangeToken, sendTokensToParent, storeToken, storeTokenInNetlify])
 
   return (
     <main className={`app-shell ${showCard ? '' : 'blank'}`}>

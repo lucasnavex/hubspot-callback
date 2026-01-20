@@ -384,7 +384,6 @@ function App() {
     return () => window.removeEventListener('message', handleProvideIds)
   }, [])
 
-  // Solicita IDs ao parent via postMessage se não estiverem disponíveis
   useEffect(() => {
     const requestIdsIfNeeded = async () => {
       const isIframe = window.self !== window.top
@@ -392,7 +391,6 @@ function App() {
       // Só solicita se estiver em iframe
       if (!isIframe || !window.parent) return
 
-      // Aguarda um pouco para garantir que o parent esteja pronto
       await new Promise((resolve) => setTimeout(resolve, 100))
 
       // Verifica se já tem IDs na URL

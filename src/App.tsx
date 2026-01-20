@@ -53,24 +53,57 @@ function App() {
 
   const sendTokensToParent = useCallback((tokens: TokenResponse) => {
     const isIframe = window.self !== window.top
-    if (!isIframe || !window.parent) return
+    
+    console.log('[sendTokensToParent] Verificando condições:', {
+      isIframe,
+      hasParent: !!window.parent,
+      hasTokens: !!tokens,
+      hasAccessToken: !!tokens?.access_token,
+      windowLocation: window.location.href,
+      parentOrigin: window.parent?.location?.origin || 'N/A (cross-origin)',
+    })
+
+    if (!isIframe) {
+      console.warn('[sendTokensToParent] Não está em iframe, abortando envio')
+      return
+    }
+
+    if (!window.parent) {
+      console.warn('[sendTokensToParent] window.parent não disponível, abortando envio')
+      return
+    }
+
+    if (!tokens || !tokens.access_token) {
+      console.warn('[sendTokensToParent] Tokens inválidos ou sem access_token:', tokens)
+      return
+    }
+
+    const messagePayload = {
+      type: 'NVOIP_OAUTH_TOKENS',
+      tokens: {
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expires_in: tokens.expires_in,
+        token_type: tokens.token_type,
+        scope: tokens.scope,
+      },
+    }
+
+    console.log('[sendTokensToParent] Enviando postMessage para HubSpot:', {
+      type: messagePayload.type,
+      hasAccessToken: !!messagePayload.tokens.access_token,
+      hasRefreshToken: !!messagePayload.tokens.refresh_token,
+      expiresIn: messagePayload.tokens.expires_in,
+      tokenType: messagePayload.tokens.token_type,
+      targetOrigin: '*',
+      fullPayload: messagePayload,
+    })
 
     try {
-      window.parent.postMessage(
-        {
-          type: 'NVOIP_OAUTH_TOKENS',
-          tokens: {
-            access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token,
-            expires_in: tokens.expires_in,
-            token_type: tokens.token_type,
-            scope: tokens.scope,
-          },
-        },
-        HUBSPOT_PARENT_ORIGIN,
-      )
+      window.parent.postMessage(messagePayload, '*')
+      console.log('[sendTokensToParent] ✅ postMessage enviado com sucesso para window.parent')
     } catch (error) {
-      console.error('Falha ao enviar tokens para o parent (HubSpot):', error)
+      console.error('[sendTokensToParent] ❌ Falha ao enviar tokens para o parent (HubSpot):', error)
     }
   }, [])
 
@@ -330,13 +363,31 @@ function App() {
 
   const storeToken = useCallback(
     async (tokenResponse: TokenResponse): Promise<void> => {
+      const isIframe = window.self !== window.top
+      
+      console.log('[storeToken] Salvando token no localStorage:', {
+        isIframe,
+        hasAccessToken: !!tokenResponse.access_token,
+        storageKey: tokenStorageKey,
+      })
+
       // Armazena localmente também
       localStorage.setItem(tokenStorageKey, JSON.stringify(tokenResponse))
+      
+      console.log('[storeToken] ✅ Token salvo no localStorage')
+      
+      // Se estiver em iframe, envia imediatamente para o HubSpot
+      // (não depende do evento storage, que só dispara entre janelas diferentes)
+      if (isIframe && window.parent) {
+        console.log('[storeToken] Enviando tokens para HubSpot imediatamente após salvar...')
+        sendTokensToParent(tokenResponse)
+      }
+      
       // Atualiza UI
       setShowCard(false)
       setIsLogged(true)
     },
-    [],
+    [sendTokensToParent],
   )
 
   const exchangeToken = useCallback(
@@ -475,16 +526,30 @@ function App() {
     const checkLocalStorageAndSend = () => {
       try {
         const stored = localStorage.getItem(tokenStorageKey)
+        console.log('[checkLocalStorageAndSend] Verificando localStorage:', {
+          hasStored: !!stored,
+          storageKey: tokenStorageKey,
+          isIframe: window.self !== window.top,
+          hasParent: !!window.parent,
+        })
+        
         if (stored) {
           try {
             const tokens = JSON.parse(stored) as TokenResponse
             if (tokens && tokens.access_token) {
-              console.log('[App] Token encontrado no localStorage, enviando para HubSpot...')
+              console.log('[App] ✅ Token encontrado no localStorage, enviando para HubSpot...', {
+                access_token: `${tokens.access_token.substring(0, 20)}...`,
+                hasRefreshToken: !!tokens.refresh_token,
+              })
               sendTokensToParent(tokens)
+            } else {
+              console.warn('[App] Token no localStorage mas sem access_token:', tokens)
             }
           } catch (e) {
             console.warn('[App] Erro ao parsear token do localStorage:', e)
           }
+        } else {
+          console.log('[App] Nenhum token encontrado no localStorage ainda')
         }
       } catch (error) {
         console.warn('[App] Erro ao verificar localStorage:', error)
@@ -555,7 +620,8 @@ function App() {
                 if (window.parent) {
                   window.parent.postMessage(
                     {
-                      type: 'nvoip-oauth-error',
+                      // Alinha com o listener do HubSpot: "NVOIP_OAUTH_ERROR"
+                      type: 'NVOIP_OAUTH_ERROR',
                       message:
                         netlifyError instanceof Error
                           ? netlifyError.message
@@ -573,7 +639,10 @@ function App() {
 
             // Envia tokens para o HubSpot (parent) quando estiver em iframe
             if (isIframe) {
+              console.log('[handleMessage] Modo iframe: enviando tokens para HubSpot via sendTokensToParent')
               sendTokensToParent(tokenResponse)
+            } else {
+              console.log('[handleMessage] Não está em iframe, não enviando para HubSpot')
             }
           } catch (error) {
             console.error('Erro ao processar token:', error)
@@ -599,10 +668,10 @@ function App() {
     const isIframe = window.self !== window.top
     const finishWithError = async (message: string) => {
       if (isPopup) {
-        window.opener?.postMessage({ type: 'nvoip-oauth-error', message }, window.location.origin)
+        window.opener?.postMessage({ type: 'NVOIP_OAUTH_ERROR', message }, window.location.origin)
         window.close()
       } else if (isIframe && window.parent) {
-        window.parent.postMessage({ type: 'nvoip-oauth-error', message }, HUBSPOT_PARENT_ORIGIN)
+        window.parent.postMessage({ type: 'NVOIP_OAUTH_ERROR', message }, HUBSPOT_PARENT_ORIGIN)
         // Não fecha iframe automaticamente, deixa o HubSpot gerenciar
       }
     }
@@ -645,8 +714,16 @@ function App() {
           // Armazena localmente e atualiza UI
           await storeToken(tokenResponse)
 
+          console.log('[handleCode] Token armazenado localmente, verificando contexto:', {
+            isPopup,
+            isIframe,
+            hasParent: !!window.parent,
+            hasOpener: !!window.opener,
+          })
+
           if (isPopup) {
             // Para popup, notifica e fecha
+            console.log('[handleCode] Modo popup: enviando para opener')
             window.opener?.postMessage(
               { type: 'nvoip-oauth-success', token: tokenResponse },
               window.location.origin,
@@ -654,6 +731,7 @@ function App() {
             window.close()
           } else if (isIframe && window.parent) {
             // Envia tokens para o HubSpot (parent) via postMessage
+            console.log('[handleCode] Modo iframe: enviando tokens para HubSpot via sendTokensToParent')
             sendTokensToParent(tokenResponse)
 
             // Para iframe, só notifica após tentar armazenar no Netlify
@@ -661,7 +739,7 @@ function App() {
               // Notifica erro ao HubSpot
               window.parent.postMessage(
                 {
-                  type: 'nvoip-oauth-error',
+                  type: 'NVOIP_OAUTH_ERROR',
                   message: netlifyStoreError.message,
                   token: tokenResponse, // Envia token mesmo em caso de erro para permitir retry
                 },
@@ -687,7 +765,7 @@ function App() {
           // Se estiver em iframe, notifica o HubSpot sobre o erro
           if (isIframe && window.parent) {
             window.parent.postMessage(
-              { type: 'nvoip-oauth-error', message: errorMessage },
+              { type: 'NVOIP_OAUTH_ERROR', message: errorMessage },
               HUBSPOT_PARENT_ORIGIN,
             )
           } else {

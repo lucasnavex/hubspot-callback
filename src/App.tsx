@@ -45,26 +45,19 @@ function App() {
   const { clientId, authUrl, tokenExchangeUrl, appRedirectPath, scopes } = nvoipAuthConfig
   const [showCard, setShowCard] = useState(true)
   const [isLogged, setIsLogged] = useState(false)
-  
-  // Armazena portalId e accountId recebidos via postMessage ou URL
-  const [hubspotIds, setHubspotIds] = useState<{ portalId: string; accountId: string } | null>(null)
 
   const redirectUriForAuth = useMemo(() => {
     return new URL(appRedirectPath, window.location.origin).toString()
   }, [appRedirectPath])
 
-  // Obtém portalId e accountId da URL, do estado, ou do contexto do HubSpot
+  // Obtém portalId e accountId da URL ou do contexto do HubSpot
   const getHubSpotIds = useCallback(async () => {
-    // 1. Usa IDs do estado (recebidos via postMessage) se disponíveis
-    let portalId = hubspotIds?.portalId || null
-    let accountId = hubspotIds?.accountId || null
-
-    // 2. Tenta obter da URL query params (mais confiável se disponível)
+    // 1. Tenta obter da URL query params primeiro (mais confiável)
     const params = new URLSearchParams(window.location.search)
-    portalId = portalId || params.get('portalId')
-    accountId = accountId || params.get('accountId')
+    let portalId = params.get('portalId')
+    let accountId = params.get('accountId')
 
-    // 3. Se não estiver na URL nem no estado, tenta do contexto do HubSpot
+    // 2. Se não estiver na URL, tenta do contexto do HubSpot (se disponível)
     if (!portalId || !accountId) {
       // Tenta métodos síncronos do HubSpot
       if (window.hubspot?.context) {
@@ -91,23 +84,21 @@ function App() {
         }
       }
 
-      // 4. Tenta métodos assíncronos da API do HubSpot
+      // 3. Tenta métodos assíncronos da API do HubSpot
       if ((!portalId || !accountId) && window.hubspot?.api) {
         try {
           if (!portalId && window.hubspot.api.getCurrentPortalId) {
-            const id = await window.hubspot.api.getCurrentPortalId()
-            if (id) portalId = id
+            portalId = await window.hubspot.api.getCurrentPortalId()
           }
           if (!accountId && window.hubspot.api.getCurrentAccountId) {
-            const id = await window.hubspot.api.getCurrentAccountId()
-            if (id) accountId = id
+            accountId = await window.hubspot.api.getCurrentAccountId()
           }
         } catch (e) {
           console.warn('Erro ao obter IDs via HubSpot API:', e)
         }
       }
 
-      // 5. Tenta extrair do pathname (formato: /app/:portalId/:accountId/...)
+      // 4. Tenta extrair do pathname (formato: /app/:portalId/:accountId/...)
       if (!portalId || !accountId) {
         const pathMatch = window.location.pathname.match(/\/(\d+)\/([^/]+)/)
         if (pathMatch) {
@@ -122,27 +113,20 @@ function App() {
       accountId: accountId || '',
     }
 
-    // Log detalhado para debug
-    console.log('[getHubSpotIds] Tentando obter IDs:', {
-      fromState: { portalId: hubspotIds?.portalId, accountId: hubspotIds?.accountId },
-      fromUrl: { portalId: params.get('portalId'), accountId: params.get('accountId') },
-      fromHubSpotContext: {
-        portalId: window.hubspot?.context?.portalId,
-        accountId: window.hubspot?.context?.accountId,
-      },
-      final: result,
-      url: window.location.href,
-      pathname: window.location.pathname,
-      search: window.location.search,
-      hasHubSpotContext: !!window.hubspot,
-    })
-
+    // Log para debug (remova em produção se necessário)
     if (!result.portalId || !result.accountId) {
-      console.warn('[getHubSpotIds] Não foi possível obter portalId ou accountId completamente:', result)
+      console.warn('Não foi possível obter portalId ou accountId:', {
+        portalId: result.portalId,
+        accountId: result.accountId,
+        url: window.location.href,
+        pathname: window.location.pathname,
+        search: window.location.search,
+        hasHubSpotContext: !!window.hubspot,
+      })
     }
 
     return result
-  }, [hubspotIds])
+  }, [])
 
   // Recupera token do Netlify storage
   const retrieveTokenFromNetlify = useCallback(async (): Promise<TokenResponse | null> => {
@@ -212,48 +196,12 @@ function App() {
         },
       }
 
-      // Logs ampliados para debug
-      console.log('[storeTokenInNetlify] Preparando para armazenar token:', {
-        windowLocationHref: window.location.href,
-        windowLocationPathname: window.location.pathname,
-        windowLocationSearch: window.location.search,
-        hubspotContext: {
-          hasHubSpot: !!window.hubspot,
-          context: window.hubspot?.context,
-          hasApi: !!window.hubspot?.api,
-        },
-        hubspotIdsState: hubspotIds,
-        payload: {
-          portalId: payload.portalId,
-          accountId: payload.accountId,
-          tokens: {
-            access_token: payload.tokens.access_token ? '[REDACTED]' : null,
-            refresh_token: payload.tokens.refresh_token ? '[REDACTED]' : null,
-            expires_in: payload.tokens.expires_in,
-            token_type: payload.tokens.token_type,
-            scope: payload.tokens.scope,
-          },
-        },
+      // Log para debug
+      console.log('Armazenando token no Netlify:', {
+        portalId: payload.portalId,
+        accountId: payload.accountId,
+        hasAccessToken: !!payload.tokens.access_token,
       })
-
-      // Tenta obter IDs via API do HubSpot para log (se disponível)
-      if (window.hubspot?.api?.getCurrentPortalId) {
-        try {
-          const apiPortalId = await window.hubspot.api.getCurrentPortalId()
-          console.log('[storeTokenInNetlify] portalId via hubspot.api.getCurrentPortalId():', apiPortalId)
-        } catch (e) {
-          console.warn('[storeTokenInNetlify] Erro ao obter portalId via API:', e)
-        }
-      }
-
-      if (window.hubspot?.api?.getCurrentAccountId) {
-        try {
-          const apiAccountId = await window.hubspot.api.getCurrentAccountId()
-          console.log('[storeTokenInNetlify] accountId via hubspot.api.getCurrentAccountId():', apiAccountId)
-        } catch (e) {
-          console.warn('[storeTokenInNetlify] Erro ao obter accountId via API:', e)
-        }
-      }
 
       try {
         const secret = import.meta.env.VITE_NVOIP_SECRET || ''
@@ -300,7 +248,7 @@ function App() {
         throw new Error(errorMessage)
       }
     },
-    [getHubSpotIds, hubspotIds],
+    [getHubSpotIds],
   )
 
   const storeToken = useCallback(
@@ -361,28 +309,6 @@ function App() {
       return
     }
   }, [buildAuthorizationUrl])
-
-  // Listener para receber portalId/accountId via postMessage do HubSpot
-  useEffect(() => {
-    const handleProvideIds = (event: MessageEvent) => {
-      // Aceita mensagens de qualquer origem (HubSpot pode enviar de app.hubspot.com)
-      const payload = event.data
-      
-      if (payload?.type === 'nvoip-provide-ids') {
-        const { portalId, accountId } = payload
-        
-        if (portalId && accountId) {
-          console.log('[postMessage] Recebendo IDs do HubSpot:', { portalId, accountId, origin: event.origin })
-          setHubspotIds({ portalId, accountId })
-        } else {
-          console.warn('[postMessage] Mensagem nvoip-provide-ids recebida mas portalId ou accountId ausentes:', payload)
-        }
-      }
-    }
-
-    window.addEventListener('message', handleProvideIds)
-    return () => window.removeEventListener('message', handleProvideIds)
-  }, [])
 
   // Recupera token ao iniciar se estiver em iframe do HubSpot
   useEffect(() => {

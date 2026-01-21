@@ -151,6 +151,37 @@ function App() {
   }, [buildAuthorizationUrl])
 
   useEffect(() => {
+    const syncTokenFromStorage = async () => {
+      const storedValue = localStorage.getItem(tokenStorageKey)
+      if (!storedValue) {
+        return
+      }
+
+      try {
+        const parsedToken = JSON.parse(storedValue) as TokenResponse
+        if (!parsedToken.access_token) {
+          throw new Error('Access token ausente.')
+        }
+
+        await storeToken(parsedToken)
+
+        const isIframe = window.self !== window.top
+        if (isIframe && window.parent) {
+          window.parent.postMessage(
+            { type: 'nvoip-token-from-local-storage', token: parsedToken },
+            window.location.origin,
+          )
+        }
+      } catch (error) {
+        console.warn('Token inválido no localStorage, limpando.', error)
+        localStorage.removeItem(tokenStorageKey)
+      }
+    }
+
+    void syncTokenFromStorage()
+  }, [storeToken])
+
+  useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return
       const payload = event.data

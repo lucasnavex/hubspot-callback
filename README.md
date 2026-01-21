@@ -96,3 +96,37 @@ set VITE_DEV_HTTPS_KEY=certs\localhost-key.pem
 set VITE_DEV_HTTPS_CERT=certs\localhost.pem
 npm run dev
 ```
+
+## Fluxo de tokens OAuth
+
+### Arquitetura geral
+
+- O iframe hospedado em Netlify (`App.tsx`) inicia o OAuth, troca o `code` pelo `access_token` via `nvoip-token-exchange` e guarda o `TokenResponse` em `localStorage` sob a chave `nvoip.oauth.token`.
+- Assim que o iframe consegue o token, ele dispara `postMessage` para o overlay HubSpot (`nvoip-oauth-success`). Se já havia token no `localStorage`, um segundo `postMessage` (`nvoip-token-from-local-storage`) acontece logo na montagem, permitindo que o cartão identifique o token sem novo login.
+- O cartão de configurações (`src/app/settings/index.tsx`) lê `portalId`/`accountId`, responde aos eventos do iframe e chama o backend via `hubspot.fetch` para persistir/recuperar tokens.
+
+### Backend de tokens
+
+- Há duas formas de expor os endpoints `POST /tokens/store` e `GET /tokens/retrieve`:
+  1. **Backend em Node (local)**: o protótipo está em `token-backend/server.js` e é iniciado com `cd token-backend && npm install && npm start`. Ele usa um `Map<string, Tokens>` em memória com as mesmas validações descritas abaixo.
+  2. **App Function do HubSpot**: `src/app/app.functions/tokenStorage.js` oferece a mesma lógica diretamente no HubSpot, com as rotas configuradas em `src/app/app.functions/serverless.json`.
+- Em ambos os casos, a resposta de `POST /tokens/store` devolve `{ portalId, accountId, tokens }` com `tokens` contendo o `access_token` e o carimbo `storedAt`. O `GET /tokens/retrieve` valida `portalId/accountId` e retorna `200` com os dados ou `404` se não houver entrada.
+- Tokens ficam apenas em memória. Sempre que o processo for reiniciado ou o container escalar, o mapa é limpo e o cartão deve ocorrer com novo login ou detectar `404`.
+
+### Configuração do settings card
+
+- A variável `VITE_NVOIP_TOKEN_BACKEND_URL` define a URL base para o backend (ex.: `http://localhost:4000` ou `https://<seu-host>/tokens`). No `.env` local ou no painel do deploy, ajuste para o endpoint que estiver em execução. O valor padrão é `http://localhost:4000`, que combina com o backend Node local.
+- Além disso, garanta que `permittedUrls.fetch` em `src/app/app-hsmeta.json` inclui o domínio desse backend (já listamos `http://localhost:4000` e `https://integration-nvoip.netlify.app` como exemplos). A variável `nvoipAuthConfig.permittedUrls.iframe` também deve incluir o host que serve o iframe.
+- O cartão serializa requisições com `JSON.stringify`, trata `response.ok` corretamente e interpreta `404` do `GET /tokens/retrieve` como “nenhum token salvo ainda”. Assim que recebe o evento `nvoip-oauth-success` ou `nvoip-token-from-local-storage`, ele chama `persistTokensToBackend` com os dados e atualiza o estado de “autenticado”.
+- Ao recarregar o cartão, `fetchTokensFromBackend` é chamado; se houver dados persistidos, o card mostra o `access_token`, o `refresh_token` e o `scope`, mantendo o estado em `status = ready`.
+
+### Sincronização com o localStorage
+
+- Na inicialização do iframe, `App.tsx` lê o `localStorage` (`nvoip.oauth.token`), marca o usuário como logado, oculta o card local e envia `postMessage` com o token encontrado quando estiver dentro do iframe do HubSpot.
+- Caso o valor salvo esteja inválido (JSON mal-formado ou `access_token` ausente), ele é limpo automaticamente para forçar o OAuth novamente.
+
+### Observações e limitações
+
+- O backend (node ou function) é um protótipo em memória. Use-o para validar o fluxo localmente, mas substitua por persistência real e controles de segurança antes de avançar para produção.
+- Os tokens são isolados por `portalId` e `accountId`, evitando vazamentos entre contas diferentes no HubSpot.
+- Os callbacks `nvoip-oauth-success`, `nvoip-oauth-error` e `nvoip-token-from-local-storage` devem sempre ser tratados no cartão para manter o estado sincronizado e reenvio automático quando necessário.

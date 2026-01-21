@@ -1,0 +1,18 @@
+{
+  "appFunctions": {
+    "tokenStorage": {
+      "file": "tokenStorage.js",
+      "endpoint": {
+        "path": "tokens/store",
+        "method": ["POST"]
+      }
+    },
+    "tokenRetrieval": {
+      "file": "tokenStorage.js",
+      "endpoint": {
+        "path": "tokens/retrieve",
+        "method": ["GET"]
+      }
+    }
+  }
+}

@@ -14,7 +14,8 @@ export const nvoipAuthConfig = {
     .map((scope: string) => scope.trim())
     .filter(Boolean),
   permittedUrls: {
-    fetch: ['https://integration-nvoip.netlify.app'],
+    fetch: ['https://integration-nvoip.netlify.app', 'http://localhost:4000'],
     iframe: ['https://integration-nvoip.netlify.app'],
   },
+  tokenBackendUrl: import.meta.env.VITE_NVOIP_TOKEN_BACKEND_URL ?? 'http://localhost:4000',
 }

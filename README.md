@@ -76,10 +76,26 @@ export default defineConfig([
 
 ## Local HTTPS
 
-O servidor de desenvolvimento já roda em HTTPS por padrão. Se estiver usando `mkcert`,
-certifique-se de que o Vite esteja configurado apenas com os certificados necessários para evitar
-conflitos. Caso haja problemas, basta remover as variáveis `VITE_DEV_HTTPS_KEY`/`CERT` e deixar
-que o Vite gere o certificado automaticamente (o fallback self-signed funciona para testes locais).
+The dev server runs on HTTPS by default. If no certs are provided, Vite will
+generate a self-signed certificate at runtime. For a trusted local cert, use mkcert.
+
+### Trusted cert with mkcert (Windows)
+
+1. Install mkcert: `choco install mkcert`
+2. Generate a local CA: `mkcert -install`
+3. Create certs in the project root:
+
+```
+mkcert -key-file certs/localhost-key.pem -cert-file certs/localhost.pem localhost 127.0.0.1 ::1
+```
+
+4. Start dev server (defaults to `certs/localhost*.pem`, or override with env vars):
+
+```
+set VITE_DEV_HTTPS_KEY=certs\localhost-key.pem
+set VITE_DEV_HTTPS_CERT=certs\localhost.pem
+npm run dev
+```
 
 ## Fluxo de tokens OAuth
 

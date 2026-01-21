@@ -30,5 +30,4 @@ export default defineConfig(({ command }) => ({
     port: 3000,
     https: command === 'serve' ? getHttpsConfig() : undefined,
   },
-  base: '/hubspot-callback/',
 }))

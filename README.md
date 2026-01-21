@@ -111,6 +111,16 @@ que o Vite gere o certificado automaticamente (o fallback self-signed funciona p
 
 ### Observações e limitações
 
+## Publicação no GitHub Pages
+
+- O Vite já foi configurado com `base: '/hubspot-callback/'`, então o build gera URLs relativos ao repositório.  
+- Para publicar, execute:
+  1. `npm run build`
+  2. `npm run deploy`
+  Esse deploy usa o pacote `gh-pages` para enviar o conteúdo de `dist/` para a branch `gh-pages`.
+- No GitHub, vá em **Settings > Pages** e escolha a branch `gh-pages` como fonte (`/`). Após alguns segundos o site ficará disponível em `https://lucasnavex.github.io/hubspot-callback/`.
+- Se preferir automatizar, crie um workflow que execute `npm run deploy` sempre que `main` for atualizado.
+
 - O backend (node ou function) é um protótipo em memória. Use-o para validar o fluxo localmente, mas substitua por persistência real e controles de segurança antes de avançar para produção.
 - Os tokens são isolados por `portalId` e `accountId`, evitando vazamentos entre contas diferentes no HubSpot.
 - Os callbacks `nvoip-oauth-success`, `nvoip-oauth-error` e `nvoip-token-from-local-storage` devem sempre ser tratados no cartão para manter o estado sincronizado e reenvio automático quando necessário.

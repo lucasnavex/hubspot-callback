@@ -13,21 +13,6 @@ type TokenResponse = {
   [key: string]: unknown
 }
 
-// Tipos para HubSpot context
-declare global {
-  interface Window {
-    hubspot?: {
-      serverless?: {
-        runServerlessFunction: (options: {
-          name: string
-          parameters?: Record<string, unknown>
-        }) => Promise<unknown>
-      }
-      fetch?: (url: string, options?: RequestInit) => Promise<Response>
-    }
-  }
-}
-
 const tokenStorageKey = 'nvoip.oauth.token'
 const stateStorageKey = 'nvoip.oauth.state'
 

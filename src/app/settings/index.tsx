@@ -21,18 +21,6 @@ type RetrieveParams = {
   accountId: string
 }
 
-declare global {
-  interface Window {
-    hubspot?: {
-      fetch?: (url: string, options?: RequestInit) => Promise<Response>
-      app?: {
-        portalId?: string
-        accountId?: string
-      }
-    }
-  }
-}
-
 const resolveTokenBackendBaseUrl = () => {
   const raw = nvoipAuthConfig.tokenBackendUrl?.trim() ?? ''
   if (!raw) {

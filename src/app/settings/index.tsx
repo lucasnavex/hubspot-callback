@@ -126,15 +126,11 @@ const getPortalAccountIds = () => {
   return { portalId, accountId }
 }
 
-const useAllowedOrigins = () =>
-  useMemo(() => new Set(nvoipAuthConfig.permittedUrls?.iframe ?? []), [])
-
 const SettingsCard = () => {
   const [tokens, setTokens] = useState<StoredTokens | null>(null)
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
   const { portalId, accountId } = useMemo(() => getPortalAccountIds(), [])
-  const allowedOrigins = useAllowedOrigins()
 
   const loadTokens = useCallback(async () => {
     if (!portalId || !accountId) {
@@ -154,61 +150,60 @@ const SettingsCard = () => {
     }
   }, [portalId, accountId])
 
-  const saveTokens = useCallback(
-    async (incomingTokens: StoredTokens) => {
-      if (!portalId || !accountId) return
-      setStatus('loading')
-      try {
-        const stored = await persistTokensToBackend({
-          portalId,
-          accountId,
-          tokens: incomingTokens,
-        })
-        setTokens(stored)
-        setStatus('ready')
-        setError(null)
-      } catch (err) {
-        setStatus('error')
-        setError(err instanceof Error ? err.message : 'Erro desconhecido ao salvar tokens.')
-      }
-    },
-    [portalId, accountId],
-  )
-
   const formatFingerprint = (value?: string) =>
     value ? `${value.substring(0, 10)}…` : '—'
-
-  const handleMessage = useCallback(
-    (event: MessageEvent) => {
-      if (allowedOrigins.size > 0 && !allowedOrigins.has(event.origin)) {
-        return
-      }
-
-      if (!event.data || typeof event.data !== 'object') {
-        return
-      }
-
-      const { type, token } = event.data as { type?: string; token?: StoredTokens }
-
-      if (!token) {
-        return
-      }
-
-      if (type === 'nvoip-oauth-success' || type === 'nvoip-token-from-local-storage') {
-        void saveTokens(token)
-      }
-    },
-    [allowedOrigins, saveTokens],
-  )
 
   useEffect(() => {
     void loadTokens()
   }, [loadTokens])
 
   useEffect(() => {
+    const allowedOrigins = new Set<string>([
+      window.location.origin,
+      ...(nvoipAuthConfig.permittedUrls?.iframe ?? []),
+    ])
+
+    const handleMessage = async (event: MessageEvent) => {
+      if (!allowedOrigins.has(event.origin)) {
+        return
+      }
+
+      if (event.data?.type !== 'nvoip-oauth-success') {
+        return
+      }
+
+      const { token, portalId: payloadPortalId, accountId: payloadAccountId } =
+        event.data as {
+          token?: StoredTokens
+          portalId?: string
+          accountId?: string
+        }
+
+      if (!token?.access_token || !payloadPortalId || !payloadAccountId) {
+        console.warn('Payload incompleto', event.data)
+        return
+      }
+
+      try {
+        setStatus('loading')
+        const stored = await persistTokensToBackend({
+          portalId: payloadPortalId,
+          accountId: payloadAccountId,
+          tokens: token,
+        })
+        setTokens(stored)
+        setStatus('ready')
+        setError(null)
+      } catch (err) {
+        console.error('Falha ao salvar token', err)
+        setStatus('error')
+        setError(err instanceof Error ? err.message : 'Erro desconhecido ao salvar tokens.')
+      }
+    }
+
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleMessage])
+  }, [])
 
   return (
     <section className="settings-shell">

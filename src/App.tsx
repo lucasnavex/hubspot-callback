@@ -16,10 +16,21 @@ type TokenResponse = {
 const tokenStorageKey = 'nvoip.oauth.token'
 const stateStorageKey = 'nvoip.oauth.state'
 
+const getPortalAccountFromQuery = () => {
+  const params = new URLSearchParams(window.location.search)
+  const portalId = params.get('portalId') ?? params.get('portal_id') ?? undefined
+  const accountId = params.get('accountId') ?? params.get('account_id') ?? undefined
+  return { portalId, accountId }
+}
+
 function App() {
   const { clientId, authUrl, tokenExchangeUrl, appRedirectPath, scopes } = nvoipAuthConfig
   const [showCard, setShowCard] = useState(true)
   const [isLogged, setIsLogged] = useState(false)
+  const { portalId: portalIdFromQuery, accountId: accountIdFromQuery } = useMemo(
+    getPortalAccountFromQuery,
+    [],
+  )
 
   const redirectUriForAuth = useMemo(() => {
     return new URL(appRedirectPath, window.location.origin).toString()
@@ -135,6 +146,27 @@ function App() {
     }
   }, [buildAuthorizationUrl])
 
+  const notifyHubSpotCard = useCallback(
+    (tokenResponse: TokenResponse) => {
+      if (window.parent && window.self !== window.top) {
+        const payload: Record<string, unknown> = {
+          type: 'nvoip-oauth-success',
+          token: tokenResponse,
+        }
+
+        if (portalIdFromQuery) {
+          payload.portalId = portalIdFromQuery
+        }
+        if (accountIdFromQuery) {
+          payload.accountId = accountIdFromQuery
+        }
+
+        window.parent.postMessage(payload, window.location.origin)
+      }
+    },
+    [portalIdFromQuery, accountIdFromQuery],
+  )
+
   useEffect(() => {
     const syncTokenFromStorage = async () => {
       const storedValue = localStorage.getItem(tokenStorageKey)
@@ -149,6 +181,7 @@ function App() {
         }
 
         await storeToken(parsedToken)
+        notifyHubSpotCard(parsedToken)
 
         const isIframe = window.self !== window.top
         if (isIframe && window.parent) {
@@ -164,7 +197,7 @@ function App() {
     }
 
     void syncTokenFromStorage()
-  }, [storeToken])
+  }, [storeToken, notifyHubSpotCard])
 
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
@@ -272,6 +305,7 @@ function App() {
 
           // Armazena localmente e atualiza UI
           await storeToken(tokenResponse)
+          notifyHubSpotCard(tokenResponse)
 
           if (isPopup) {
             // Para popup, notifica e fecha

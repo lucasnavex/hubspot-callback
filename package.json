@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:https": "cross-env VITE_DEV_HTTPS_KEY=certs/localhost-key.pem VITE_DEV_HTTPS_CERT=certs/localhost.pem vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -26,6 +27,7 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "selfsigned": "^2.4.1",
+    "cross-env": "^7.0.3",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4"
